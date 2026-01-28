@@ -9,6 +9,7 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 import json
+import random
 from templates import get_strategy_by_scene, OPTIMIZATION_PRINCIPLES
 
 
@@ -51,6 +52,24 @@ class TranslationPrompt(BaseModel):
     glossary_section: str = Field(description="构建的术语对照表部分，如果没有则留空")
     workflow_steps: str = Field(description="翻译的工作流指令，推荐使用'直译-反思-润色'三步法")
     final_prompt: str = Field(description="最终组合好的 Prompt 模板，待翻译文本用 {{text}} 占位")
+
+
+class SearchSpace(BaseModel):
+    """随机搜索的变量空间"""
+    roles: list[str] = Field(description="5个适合该任务的不同角色设定")
+    styles: list[str] = Field(description="5种不同的回答风格")
+    techniques: list[str] = Field(description="3种不同的提示技巧，如: step-by-step, few-shot, direct")
+
+
+class SearchResult(BaseModel):
+    """单次搜索的结果"""
+    iteration_id: int = Field(description="迭代编号")
+    role: str = Field(description="使用的角色")
+    style: str = Field(description="使用的风格")
+    technique: str = Field(description="使用的技巧")
+    full_prompt: str = Field(description="完整的组合 Prompt")
+    avg_score: float = Field(description="在验证集上的平均得分")
+    task_type: str = Field(description="任务类型：classification/summarization/translation")
 
 
 class PromptOptimizer:
@@ -877,6 +896,353 @@ class PromptOptimizer:
             result = self.optimize(prompt, scene_desc, optimization_mode)
             results.append(result)
         return results
+
+
+    def generate_search_space(self, task_description: str, task_type: str = "classification") -> SearchSpace:
+        """
+        让 LLM 自动分析任务，生成可供搜索的变量池
+        
+        Args:
+            task_description: 任务描述
+            task_type: 任务类型 (classification/summarization/translation)
+            
+        Returns:
+            SearchSpace 对象，包含 roles, styles, techniques
+        """
+        print(f"\n{'='*60}")
+        print(f"🧠 生成搜索空间")
+        print(f"{'='*60}")
+        print(f"任务类型: {task_type}")
+        print(f"任务描述: {task_description}")
+        print(f"{'='*60}\n")
+        
+        system_prompt = """
+你是一个 Prompt 策略生成器。你的任务是为给定的任务设计多种可能的 Prompt 组件。
+
+**输出要求：**
+请以 JSON 格式返回，包含三个数组：
+- roles: 5个不同的角色设定
+- styles: 5种不同的语气/风格  
+- techniques: 3种不同的提示工程技巧
+
+**角色示例**：
+- 对于分类任务：资深数据分析师、心理学家、客服经理、产品经理、社交媒体专家
+- 对于摘要任务：新闻编辑、技术文档专家、会议记录员、研究员、顾问
+- 对于翻译任务：专业译者、双语作家、本地化专家、技术翻译、文学翻译
+
+**风格示例**：
+- 严谨学术、通俗易懂、简洁明了、详尽全面、创意幽默
+
+**技巧示例**：
+- "Let's think step by step" (思维链)
+- "Provide only the label without explanation" (直接回答)
+- "First analyze the features, then make a decision" (特征分析)
+- "Use few-shot examples" (少样本学习)
+- "Output in JSON format" (格式化输出)
+
+请确保输出是有效的 JSON 格式。
+"""
+        
+        user_prompt = f"""
+任务类型：{task_type}
+任务描述：{task_description}
+
+请为这个任务设计：
+1. 5个不同的角色定位（从保守到创新，覆盖不同专业背景）
+2. 5种不同的回答风格/语气
+3. 3种不同的提示工程技巧或指令模式
+
+确保输出纯 JSON 格式。
+"""
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", user_prompt)
+        ])
+        
+        try:
+            # 调用 LLM
+            print("📡 调用 LLM 生成搜索空间...")
+            messages = prompt_template.format_messages(task_type=task_type, task_description=task_description)
+            response = self.llm.invoke(messages)
+            
+            print(f"✅ LLM 响应成功")
+            print(f"原始响应长度: {len(response.content)} 字符")
+            
+            # 解析 JSON
+            content = response.content.strip()
+            print(f"\n🔍 解析 JSON 响应...")
+            print(f"原始内容前100字符: {content[:100]}...")
+            
+            # 移除可能的 markdown 代码块标记
+            if content.startswith("```json"):
+                content = content[7:]
+                print("  移除了 ```json 标记")
+            if content.startswith("```"):
+                content = content[3:]
+                print("  移除了 ``` 标记")
+            if content.endswith("```"):
+                content = content[:-3]
+                print("  移除了尾部 ``` 标记")
+            content = content.strip()
+            
+            # 提取 JSON 部分（从第一个 { 到最后一个 }）
+            # 这样可以忽略 JSON 前后的额外文本
+            try:
+                start_idx = content.index('{')
+                end_idx = content.rindex('}') + 1
+                content = content[start_idx:end_idx]
+                print(f"  提取了纯 JSON 内容（从第 {start_idx} 到第 {end_idx} 字符）")
+            except ValueError:
+                print("  ⚠️ 未找到完整的 JSON 对象，尝试直接解析")
+            
+            print(f"清理后内容前100字符: {content[:100]}...")
+            
+            data = json.loads(content)
+            print(f"✅ JSON 解析成功")
+            print(f"  - roles: {len(data.get('roles', []))} 个")
+            print(f"  - styles: {len(data.get('styles', []))} 个")
+            print(f"  - techniques: {len(data.get('techniques', []))} 个")
+            
+            # 处理 LLM 可能返回对象数组的情况
+            # 如果返回 [{"name": "xxx", "description": "yyy"}]，提取 name 字段
+            def extract_names(items):
+                """提取字符串或对象数组中的名称"""
+                if not items:
+                    return []
+                result = []
+                for item in items:
+                    if isinstance(item, str):
+                        result.append(item)
+                    elif isinstance(item, dict) and 'name' in item:
+                        result.append(item['name'])
+                        print(f"    提取: {item['name']}")
+                return result
+            
+            # 转换数据格式
+            print(f"🔄 处理数据格式...")
+            data['roles'] = extract_names(data.get('roles', []))
+            data['styles'] = extract_names(data.get('styles', []))
+            data['techniques'] = extract_names(data.get('techniques', []))
+            
+            print(f"  ✅ roles: {data['roles']}")
+            print(f"  ✅ styles: {data['styles']}")
+            print(f"  ✅ techniques: {data['techniques']}")
+            
+            result = SearchSpace(**data)
+            print(f"\n✅ 搜索空间生成完成！\n")
+            return result
+            
+        except Exception as e:
+            print(f"\n❌ 生成搜索空间失败！")
+            print(f"错误类型: {type(e).__name__}")
+            print(f"错误信息: {e}")
+            
+            import traceback
+            print(f"\n完整错误堆栈：")
+            traceback.print_exc()
+            
+            print(f"\n⚠️ 使用默认搜索空间...\n")
+            # 返回默认的搜索空间
+            return SearchSpace(
+                roles=[
+                    "资深专家",
+                    "数据分析师",
+                    "领域顾问",
+                    "实践者",
+                    "研究员"
+                ],
+                styles=[
+                    "严谨学术",
+                    "通俗易懂",
+                    "简洁明了",
+                    "详尽全面",
+                    "系统化"
+                ],
+                techniques=[
+                    "Let's think step by step",
+                    "Provide direct answer without explanation",
+                    "Analyze features then decide"
+                ]
+            )
+    
+    
+    def run_random_search(
+        self, 
+        task_description: str,
+        task_type: str,
+        test_dataset: list[dict],
+        search_space: SearchSpace,
+        iterations: int = 5,
+        progress_callback=None
+    ) -> tuple[list[SearchResult], SearchResult]:
+        """
+        执行随机搜索优化
+        
+        Args:
+            task_description: 任务描述
+            task_type: 任务类型 (classification/summarization/translation)
+            test_dataset: 测试数据集 [{'input': '...', 'ground_truth': '...'}]
+            search_space: 搜索空间
+            iterations: 搜索迭代次数
+            progress_callback: 进度回调函数 callback(current, total, message)
+            
+        Returns:
+            (所有结果列表, 最佳结果)
+        """
+        from metrics import MetricsCalculator
+        
+        results_log = []
+        calc = MetricsCalculator()
+        
+        print(f"\n{'='*60}")
+        print(f"开始随机搜索优化 - {iterations} 次迭代")
+        print(f"{'='*60}\n")
+        
+        for i in range(iterations):
+            # 1. 随机采样：摇骰子组合 Prompt
+            chosen_role = random.choice(search_space.roles)
+            chosen_style = random.choice(search_space.styles)
+            chosen_tech = random.choice(search_space.techniques)
+            
+            print(f"迭代 {i+1}/{iterations}")
+            print(f"  角色: {chosen_role}")
+            print(f"  风格: {chosen_style}")
+            print(f"  技巧: {chosen_tech}")
+            
+            # 2. 拼装候选 Prompt
+            if task_type == "classification":
+                candidate_prompt = f"""你是一位{chosen_role}。
+
+任务：{task_description}
+
+风格要求：{chosen_style}
+
+指令：{chosen_tech}
+
+请对以下文本进行分类：
+[待分类文本]
+
+只输出分类标签，不要额外解释。
+"""
+            elif task_type == "summarization":
+                candidate_prompt = f"""你是一位{chosen_role}。
+
+任务：{task_description}
+
+风格要求：{chosen_style}
+
+指令：{chosen_tech}
+
+请对以下文本进行摘要：
+[待摘要文本]
+
+请按照要求输出摘要。
+"""
+            elif task_type == "translation":
+                candidate_prompt = f"""你是一位{chosen_role}。
+
+任务：{task_description}
+
+风格要求：{chosen_style}
+
+指令：{chosen_tech}
+
+请翻译以下文本：
+[待翻译文本]
+
+只输出翻译结果，不要额外说明。
+"""
+            else:
+                candidate_prompt = f"""角色: {chosen_role}
+风格: {chosen_style}
+任务: {task_description}
+指令: {chosen_tech}
+
+输入: {{input}}
+"""
+            
+            # 3. 在测试集上跑分
+            scores = []
+            for case_idx, case in enumerate(test_dataset):
+                try:
+                    print(f"\n  📝 测试样本 {case_idx+1}/{len(test_dataset)}")
+                    print(f"    输入: {case['input'][:50]}..." if len(case['input']) > 50 else f"    输入: {case['input']}")
+                    print(f"    标准答案: {case['ground_truth']}")
+                    
+                    # 替换占位符
+                    if task_type == "classification":
+                        prompt_filled = candidate_prompt.replace("[待分类文本]", case['input'])
+                    elif task_type == "summarization":
+                        prompt_filled = candidate_prompt.replace("[待摘要文本]", case['input'])
+                    elif task_type == "translation":
+                        prompt_filled = candidate_prompt.replace("[待翻译文本]", case['input'])
+                    else:
+                        prompt_filled = candidate_prompt.replace("{{input}}", case['input'])
+                    
+                    # 调用 LLM
+                    print(f"    🤖 调用 LLM...")
+                    response = self.llm.invoke(prompt_filled)
+                    prediction = response.content.strip()
+                    print(f"    💬 LLM 输出: {prediction[:80]}..." if len(prediction) > 80 else f"    💬 LLM 输出: {prediction}")
+                    
+                    # 计算分数
+                    if task_type == "classification":
+                        # 分类任务：简单匹配
+                        score = 100.0 if prediction == case['ground_truth'] else 0.0
+                        print(f"    📊 匹配结果: {'✅ 正确' if score == 100.0 else '❌ 错误'}")
+                    elif task_type == "summarization":
+                        # 摘要任务：ROUGE
+                        print(f"    📊 计算 ROUGE 分数...")
+                        rouge_scores = calc.calculate_rouge(prediction, case['ground_truth'])
+                        score = rouge_scores['rouge1']  # 使用 ROUGE-1 作为评分
+                        print(f"    📊 ROUGE-1: {score:.2f}")
+                    elif task_type == "translation":
+                        # 翻译任务：BLEU
+                        print(f"    📊 计算 BLEU 分数...")
+                        score = calc.calculate_bleu(prediction, case['ground_truth'])
+                        print(f"    📊 BLEU: {score:.2f}")
+                    else:
+                        score = 50.0  # 默认分数
+                    
+                    scores.append(score)
+                    print(f"    ✅ 得分: {score:.1f}")
+                    
+                except Exception as e:
+                    print(f"    ❌ 评估失败！")
+                    print(f"    错误类型: {type(e).__name__}")
+                    print(f"    错误信息: {e}")
+                    scores.append(0.0)
+            
+            # 计算平均分
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+            print(f"  平均得分: {avg_score:.2f}\n")
+            
+            # 4. 记录结果
+            result = SearchResult(
+                iteration_id=i+1,
+                role=chosen_role,
+                style=chosen_style,
+                technique=chosen_tech,
+                full_prompt=candidate_prompt,
+                avg_score=avg_score,
+                task_type=task_type
+            )
+            results_log.append(result)
+            
+            # 调用进度回调
+            if progress_callback:
+                progress_callback(i+1, iterations, f"完成迭代 {i+1}/{iterations}，得分: {avg_score:.2f}")
+        
+        # 找出最佳结果
+        best_result = max(results_log, key=lambda x: x.avg_score)
+        
+        print(f"{'='*60}")
+        print(f"搜索完成！最佳得分: {best_result.avg_score:.2f}")
+        print(f"最佳组合: {best_result.role} + {best_result.style} + {best_result.technique}")
+        print(f"{'='*60}\n")
+        
+        return results_log, best_result
 
 
 # 便捷函数

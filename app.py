@@ -1425,6 +1425,315 @@ else:
                     with st.expander("查看错误详情"):
                         st.code(traceback.format_exc())
 
+# ========== 随机搜索优化功能 ==========
+st.markdown("---")
+st.header("🎲 Prompt 随机搜索优化 (Random Search)")
+
+with st.expander("💡 什么是随机搜索？", expanded=False):
+    st.markdown("""
+    **随机搜索**是一种自动化 Prompt 优化算法：
+    
+    1. **参数化分解**：将 Prompt 拆解为可变组件（角色、风格、技巧）
+    2. **随机组合**：生成多个不同的 Prompt 变体
+    3. **实战评估**：在您提供的测试集上实际运行并打分
+    4. **优胜劣汰**：自动找出得分最高的 Prompt
+    
+    **优势**：
+    - ✅ 突破人类思维定势，发现意想不到的高分组合
+    - ✅ 基于数据的科学决策，而非凭感觉
+    - ✅ 适合对性能要求极高的场景
+    
+    **成本提示**：如果迭代10次，测试集5条数据，将调用 LLM `10×5=50` 次
+    """)
+
+search_col1, search_col2 = st.columns([3, 2])
+
+with search_col1:
+    st.subheader("📋 配置搜索任务")
+    
+    # 任务类型选择
+    search_task_type = st.selectbox(
+        "选择任务类型",
+        ["classification", "summarization", "translation"],
+        format_func=lambda x: {
+            "classification": "分类任务 (Classification)",
+            "summarization": "摘要任务 (Summarization)",
+            "translation": "翻译任务 (Translation)"
+        }[x],
+        key="search_task_type"
+    )
+    
+    # 任务描述
+    search_task_desc = st.text_area(
+        "任务描述",
+        placeholder="例如：对用户评论进行情感分类（积极/消极/中立）",
+        height=80,
+        key="search_task_desc"
+    )
+    
+    # 测试数据集
+    st.markdown("#### 📥 测试数据集 (Validation Set)")
+    st.caption("请提供至少2-3个测试样本和对应的标准答案，用于评估不同 Prompt 的实际效果")
+    
+    # 根据任务类型提供不同的默认数据
+    if search_task_type == "classification":
+        default_test_data = [
+            # 简单案例（基准）
+            {"input": "这个产品真的很好用，非常满意！", "ground_truth": "积极"},
+            {"input": "价格太贵了，性价比不高", "ground_truth": "消极"},
+            
+            # 困难案例：混合情感
+            {"input": "产品质量不错，但是价格有点贵，总体来说还行", "ground_truth": "中立"},
+            {"input": "功能很强大，就是操作有点复杂，需要学习成本", "ground_truth": "中立"},
+            
+            # 困难案例：反讽语气
+            {"input": "哇，真是太'棒'了，收到就坏了，非常'满意'呢", "ground_truth": "消极"},
+            
+            # 困难案例：委婉表达
+            {"input": "emmm...怎么说呢，可能不太适合我吧", "ground_truth": "消极"},
+            
+            # 困难案例：纯客观描述
+            {"input": "包装是红色的，尺寸和描述一致，昨天收到的", "ground_truth": "中立"},
+            
+            # 困难案例：期待落空
+            {"input": "本来抱了很大期望，结果就这？", "ground_truth": "消极"}
+        ]
+    elif search_task_type == "summarization":
+        default_test_data = [
+            {
+                "input": "今天召开了产品评审会议，讨论了新功能的设计方案。会议决定采用方案A，由张三负责开发，预计2周完成。此外，还讨论了市场推广策略，决定先在一线城市试点，收集用户反馈后再全面推广。",
+                "ground_truth": "会议决定采用方案A，张三负责开发（2周），先在一线城市试点后再全面推广。"
+            },
+            {
+                "input": "公司年会将于下月15日举行，地点在市中心大酒店。各部门需提前准备节目，人力资源部负责协调。预算控制在50万以内，需要提前预定场地和晚宴。",
+                "ground_truth": "年会下月15日市中心大酒店举行，各部门准备节目，HR协调，预算50万。"
+            },
+            {
+                "input": "根据最新销售数据，Q3季度营收同比增长35%，主要来自于新产品线的贡献。其中，AI产品线增长最快，达到了60%的同比增长率。但是，传统产品线出现了10%的下滑，需要引起重视。",
+                "ground_truth": "Q3营收增长35%，AI产品线增长60%，但传统产品下滑10%需关注。"
+            },
+            {
+                "input": "用户反馈主要集中在三个方面：首先是界面设计需要优化，有42%的用户提到操作不够直观；其次是加载速度慢，有35%的用户抱怨；最后是缺少某些核心功能，占23%。总体满意度为3.2分（满分5分）。",
+                "ground_truth": "用户反馈：界面不直观(42%)、加载慢(35%)、缺功能(23%)，满意度3.2/5分。"
+            }
+        ]
+    else:  # translation
+        default_test_data = [
+            {"input": "人工智能正在改变世界", "ground_truth": "Artificial intelligence is changing the world"},
+            {"input": "机器学习是AI的核心技术", "ground_truth": "Machine learning is the core technology of AI"},
+            {"input": "深度学习模型在图像识别领域取得了突破性进展", "ground_truth": "Deep learning models have made breakthrough progress in the field of image recognition"},
+            {"input": "自然语言处理技术使计算机能够理解和生成人类语言", "ground_truth": "Natural language processing technology enables computers to understand and generate human language"},
+            {"input": "大语言模型的出现标志着人工智能发展的新阶段", "ground_truth": "The emergence of large language models marks a new stage in the development of artificial intelligence"}
+        ]
+    
+    # 使用 data_editor 让用户编辑测试数据
+    test_dataset = st.data_editor(
+        default_test_data,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "input": st.column_config.TextColumn("测试输入", width="medium"),
+            "ground_truth": st.column_config.TextColumn("标准答案", width="medium")
+        },
+        key="search_test_dataset"
+    )
+
+with search_col2:
+    st.subheader("⚙️ 搜索参数")
+    
+    # 搜索迭代次数
+    search_iterations = st.slider(
+        "搜索迭代次数",
+        min_value=3,
+        max_value=15,
+        value=5,
+        help="尝试多少种不同的 Prompt 组合（迭代越多，找到更好 Prompt 的概率越大，但消耗的 API 调用也越多）",
+        key="search_iterations"
+    )
+    
+    # 显示预估消耗
+    estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
+    st.info(f"💰 预计消耗 API 调用次数：**{estimated_calls}** 次")
+    
+    st.markdown("---")
+    
+    # 开始搜索按钮
+    start_search_btn = st.button(
+        "🚀 开始随机搜索寻优",
+        type="primary",
+        use_container_width=True,
+        disabled=not (search_task_desc and test_dataset and len(test_dataset) >= 1),
+        key="start_search_btn"
+    )
+
+# 执行随机搜索
+if start_search_btn:
+    if not api_key_input or api_key_input.strip() == "":
+        st.error("❌ 请先在侧边栏配置 API Key")
+    elif not search_task_desc or search_task_desc.strip() == "":
+        st.error("❌ 请输入任务描述")
+    elif not test_dataset or len(test_dataset) < 1:
+        st.error("❌ 请至少提供 1 条测试数据")
+    else:
+        try:
+            # 创建优化器
+            optimizer = PromptOptimizer(
+                api_key=api_key_input,
+                model=model_choice,
+                base_url=base_url if base_url else None,
+                provider=api_provider.lower()
+            )
+            
+            # 转换测试数据格式
+            print(f"\n{'='*60}")
+            print(f"🔍 调试信息：测试数据类型检查")
+            print(f"{'='*60}")
+            print(f"test_dataset 类型: {type(test_dataset)}")
+            print(f"test_dataset 内容: {test_dataset}")
+            
+            # 根据类型转换
+            import pandas as pd
+            if isinstance(test_dataset, pd.DataFrame):
+                test_data_list = test_dataset.to_dict('records')
+                print(f"✅ 从 DataFrame 转换为列表")
+            elif isinstance(test_dataset, list):
+                test_data_list = test_dataset
+                print(f"✅ 已经是列表格式")
+            else:
+                # 尝试转换为列表
+                test_data_list = list(test_dataset)
+                print(f"✅ 转换为列表格式")
+            
+            print(f"最终测试数据: {test_data_list}")
+            print(f"{'='*60}\n")
+            
+            # 阶段1: 生成搜索空间
+            with st.status("🧠 正在分析任务，生成搜索空间...", expanded=True) as status:
+                st.write("让 LLM 分析任务特点，生成可能的角色、风格和技巧组合...")
+                
+                search_space = optimizer.generate_search_space(
+                    task_description=search_task_desc,
+                    task_type=search_task_type
+                )
+                
+                st.success("✅ 搜索空间生成完成！")
+                
+                # 展示生成的变量池
+                space_col1, space_col2, space_col3 = st.columns(3)
+                with space_col1:
+                    st.markdown("**🎭 角色池**")
+                    for role in search_space.roles:
+                        st.write(f"• {role}")
+                with space_col2:
+                    st.markdown("**🎨 风格池**")
+                    for style in search_space.styles:
+                        st.write(f"• {style}")
+                with space_col3:
+                    st.markdown("**🔧 技巧池**")
+                    for tech in search_space.techniques:
+                        st.write(f"• {tech}")
+                
+                status.update(label="正在执行随机搜索...", state="running")
+                
+                # 阶段2: 执行随机搜索
+                progress_bar = st.progress(0.0)
+                progress_text = st.empty()
+                
+                def update_progress(current, total, message):
+                    progress = current / total
+                    progress_bar.progress(progress)
+                    progress_text.text(f"{message} ({current}/{total})")
+                
+                # 运行搜索
+                all_results, best_result = optimizer.run_random_search(
+                    task_description=search_task_desc,
+                    task_type=search_task_type,
+                    test_dataset=test_data_list,
+                    search_space=search_space,
+                    iterations=search_iterations,
+                    progress_callback=update_progress
+                )
+                
+                status.update(label="✅ 搜索完成！", state="complete")
+            
+            # 阶段3: 展示结果
+            st.markdown("---")
+            st.header("🏆 搜索结果")
+            
+            # 最佳结果高亮展示
+            st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
+            
+            result_col1, result_col2 = st.columns([3, 2])
+            
+            with result_col1:
+                st.markdown("### 🎯 冠军 Prompt")
+                st.code(best_result.full_prompt, language="text")
+            
+            with result_col2:
+                st.markdown("### 📊 策略组成")
+                st.markdown(f"**🎭 角色：** {best_result.role}")
+                st.markdown(f"**🎨 风格：** {best_result.style}")
+                st.markdown(f"**🔧 技巧：** {best_result.technique}")
+                st.markdown(f"**💯 得分：** {best_result.avg_score:.2f}")
+            
+            # 所有结果排行榜
+            st.markdown("---")
+            st.subheader("📋 完整搜索记录")
+            
+            # 构建结果表格
+            import pandas as pd
+            results_df = pd.DataFrame([
+                {
+                    "排名": i + 1,
+                    "迭代ID": r.iteration_id,
+                    "角色": r.role,
+                    "风格": r.style,
+                    "技巧": r.technique,
+                    "得分": f"{r.avg_score:.2f}"
+                }
+                for i, r in enumerate(sorted(all_results, key=lambda x: x.avg_score, reverse=True))
+            ])
+            
+            st.dataframe(
+                results_df,
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # 可视化分数分布
+            st.markdown("---")
+            st.subheader("📈 得分分布图")
+            
+            import matplotlib.pyplot as plt
+            import matplotlib
+            matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+            matplotlib.rcParams['axes.unicode_minus'] = False
+            
+            fig, ax = plt.subplots(figsize=(10, 4))
+            scores = [r.avg_score for r in all_results]
+            iterations = [r.iteration_id for r in all_results]
+            
+            ax.plot(iterations, scores, marker='o', linewidth=2, markersize=8)
+            ax.axhline(y=best_result.avg_score, color='r', linestyle='--', label=f'最佳得分: {best_result.avg_score:.2f}')
+            ax.set_xlabel('迭代次数')
+            ax.set_ylabel('得分')
+            ax.set_title('随机搜索得分变化')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            st.pyplot(fig)
+            
+            # 保存最佳结果到 session_state
+            st.session_state.best_search_result = best_result
+            
+            st.success("✅ 随机搜索优化完成！您可以将冠军 Prompt 复制使用。")
+            
+        except Exception as e:
+            st.error(f"❌ 搜索过程出错：{str(e)}")
+            import traceback
+            with st.expander("查看错误详情"):
+                st.code(traceback.format_exc())
+
 col_foot1, col_foot2, col_foot3 = st.columns(3)
 
 with col_foot1:
