@@ -434,8 +434,7 @@ with col_foot3:
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #888;'>"
-    "🚀 AI Prompt 自动优化系统 | Powered by LangChain & GPT-4 | "
-    "<a href='https://github.com' style='color: #667eea;'>GitHub</a>"
+    "🚀 AI Prompt 自动优化系统"
     "</div>",
     unsafe_allow_html=True
 )
