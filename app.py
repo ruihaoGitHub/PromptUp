@@ -4,8 +4,9 @@ AI Prompt 自动优化系统 - Streamlit 界面
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from optimizer import PromptOptimizer
+from optimizer import PromptOptimizer, OptimizedPrompt, ClassificationPrompt, SummarizationPrompt, TranslationPrompt
 from nvidia_models import get_model_list
+from metrics import MetricsCalculator
 
 # 加载环境变量
 load_dotenv()
@@ -539,14 +540,6 @@ elif task_type == "分类任务":
             # 1. 优化思路
             with st.expander("🧠 查看优化思路", expanded=True):
                 st.write(result.thinking_process)
-                
-                # 应用的技术
-                st.markdown("**🛠️ 应用的优化技术：**")
-                techniques_html = "".join([
-                    f'<span class="technique-badge">{tech}</span>'
-                    for tech in result.enhancement_techniques
-                ])
-                st.markdown(techniques_html, unsafe_allow_html=True)
             
             # 2. 角色定义
             with st.expander("👤 角色设定", expanded=False):
@@ -946,6 +939,491 @@ Fine-tuning=微调
 - ✅ 对于专业文档，建议先翻译一小段测试效果
 - ✅ 如果译文不够地道，可以要求模型"再次润色"
                 """)
+
+# ========== 效果验证实验室 ==========
+st.markdown("---")
+st.header("🧪 效果验证实验室")
+st.markdown("在此输入测试数据和标准答案，系统将自动计算性能指标（Accuracy / BLEU / ROUGE）。")
+
+# 判断是否已经生成了优化后的 Prompt
+has_result = False
+current_result = None
+placeholder_text = ""
+
+if task_type == "生成任务" and st.session_state.result:
+    has_result = True
+    current_result = st.session_state.result
+    placeholder_text = "待处理的输入"
+elif task_type == "分类任务" and st.session_state.classification_result:
+    has_result = True
+    current_result = st.session_state.classification_result
+    placeholder_text = "待分类的文本"
+elif task_type == "摘要任务" and st.session_state.summarization_result:
+    has_result = True
+    current_result = st.session_state.summarization_result
+    placeholder_text = "待摘要的文本"
+elif task_type == "翻译任务" and st.session_state.translation_result:
+    has_result = True
+    current_result = st.session_state.translation_result
+    placeholder_text = "待翻译的文本"
+
+if not has_result:
+    st.info("💡 请先在上方完成 Prompt 优化，然后再进行效果验证。")
+else:
+    st.success(f"✅ 检测到已优化的 {task_type} Prompt，可以开始验证！")
+    
+    # 验证区域
+    col_test1, col_test2 = st.columns(2)
+    
+    with col_test1:
+        st.markdown("**📝 测试输入**")
+        
+        # 根据任务类型显示不同的提示
+        if task_type == "分类任务":
+            placeholder_hint = """示例（每行一个测试样本）：
+这个产品真的很好用，非常满意！
+价格太贵了，性价比不高。
+还可以吧，没有特别的感觉。"""
+            help_text = "分类任务支持批量测试：每行一个测试文本，系统会依次分类并计算整体准确率"
+        elif task_type == "摘要任务":
+            placeholder_hint = f"输入{placeholder_text}..."
+            help_text = "摘要任务输入单个长文本进行测试"
+        elif task_type == "翻译任务":
+            placeholder_hint = f"输入{placeholder_text}..."
+            help_text = "翻译任务输入单个文本进行测试"
+        else:
+            placeholder_hint = f"输入{placeholder_text}..."
+            help_text = "输入需要测试的数据"
+        
+        test_input = st.text_area(
+            "输入测试数据",
+            height=150,
+            placeholder=placeholder_hint,
+            key="test_input",
+            help=help_text
+        )
+        
+        # 语言设置（用于 ROUGE 和 BLEU）
+        if task_type in ["摘要任务", "翻译任务"]:
+            test_lang = st.selectbox(
+                "测试数据语言",
+                ["中文", "英文"],
+                key="test_lang",
+                help="用于正确计算 ROUGE/BLEU 分数（中文需要分词）"
+            )
+    
+    with col_test2:
+        st.markdown("**✅ 标准参考答案**")
+        
+        # 根据任务类型显示不同的提示
+        if task_type == "分类任务":
+            ref_placeholder = """示例（每行一个标签，与测试数据一一对应）：
+积极
+消极
+中立"""
+            ref_help = "每行一个标签，顺序与左侧测试数据对应"
+        elif task_type == "摘要任务":
+            ref_placeholder = "输入人工撰写的标准摘要..."
+            ref_help = "用于计算 ROUGE 分数的参考摘要"
+        elif task_type == "翻译任务":
+            ref_placeholder = "输入人工翻译的标准译文..."
+            ref_help = "用于计算 BLEU 分数的参考译文"
+        else:
+            ref_placeholder = "输入标准答案或期望输出..."
+            ref_help = "用于计算评估指标的参考答案"
+        
+        reference_output = st.text_area(
+            "参考答案",
+            height=150,
+            placeholder=ref_placeholder,
+            key="reference_output",
+            help=ref_help
+        )
+        
+        st.caption("💡 **为什么需要参考答案？**")
+        if task_type == "分类任务":
+            st.caption("Accuracy 需要对比「模型预测」和「正确标签」。支持批量测试，更准确评估分类效果。")
+        else:
+            st.caption("Accuracy/BLEU/ROUGE 等数学指标需要对比「模型输出」和「标准答案」来计算分数。")
+    
+    # 运行评估按钮
+    if st.button("🚀 运行 Prompt 并计算指标", type="primary", use_container_width=True):
+        if not test_input or not reference_output:
+            st.error("❌ 请同时提供测试输入和参考答案！")
+        elif not api_key_input or api_key_input.strip() == "":
+            st.error("❌ 请先在侧边栏配置 API Key")
+        else:
+            # 添加详细日志
+            print(f"\n{'='*60}")
+            print(f"🧪 开始效果验证")
+            print(f"{'='*60}")
+            print(f"📋 任务类型: {task_type}")
+            print(f"📝 测试输入长度: {len(test_input)} 字符")
+            print(f"✅ 参考答案长度: {len(reference_output)} 字符")
+            print(f"🔌 API 提供商: {api_provider}")
+            print(f"🤖 使用模型: {model_choice}")
+            print(f"{'='*60}\n")
+            
+            with st.spinner("🔮 模型正在根据优化后的 Prompt 生成结果..."):
+                try:
+                    print("🔧 步骤 1: 创建优化器...")
+                    # 创建优化器（使用相同的配置）
+                    optimizer = PromptOptimizer(
+                        api_key=api_key_input,
+                        model=model_choice,
+                        base_url=base_url if base_url else None,
+                        provider=api_provider.lower()
+                    )
+                    print("✅ 优化器创建成功")
+                    
+                    print("\n🔧 步骤 2: 构建最终 Prompt...")
+                    
+                    # 智能替换函数：尝试多种占位符格式
+                    def smart_replace(template: str, text: str, task_type_name: str = "") -> str:
+                        """智能替换各种可能的占位符格式"""
+                        # 记录原始模板
+                        original = template
+                        
+                        # 尝试各种占位符格式（按优先级排序）
+                        replacements = [
+                            # 标准占位符
+                            ("{{text}}", text),
+                            ("{text}", text),
+                            ("{{input}}", text),
+                            ("{input}", text),
+                            
+                            # 中文方括号占位符
+                            ("[输入评论]", text),
+                            ("[待分类文本]", text),
+                            ("[待翻译文本]", text),
+                            ("[待摘要文本]", text),
+                            ("[输入文本]", text),
+                            ("[文本内容]", text),
+                            ("[用户输入]", text),
+                            
+                            # 中文花括号占位符
+                            ("【输入评论】", text),
+                            ("【待分类文本】", text),
+                            ("【待翻译文本】", text),
+                            ("【待摘要文本】", text),
+                            ("【输入文本】", text),
+                            ("【文本内容】", text),
+                            ("【待处理文本】", text),
+                            
+                            # 英文描述性占位符
+                            ("[INPUT]", text),
+                            ("[TEXT]", text),
+                            ("[CONTENT]", text),
+                            ("{INPUT}", text),
+                            ("{TEXT}", text),
+                            
+                            # 其他常见格式
+                            ("<text>", text),
+                            ("<input>", text),
+                            ("$text", text),
+                            ("$input", text),
+                        ]
+                        
+                        result = template
+                        replaced_count = 0
+                        replaced_placeholders = []
+                        
+                        for placeholder, replacement in replacements:
+                            if placeholder in result:
+                                old_result = result
+                                result = result.replace(placeholder, replacement)
+                                if result != old_result:
+                                    replaced_count += 1
+                                    replaced_placeholders.append(placeholder)
+                                    print(f"   ✅ 替换 '{placeholder}' -> 实际文本")
+                        
+                        if replaced_count == 0:
+                            print(f"   ⚠️ 警告：未找到任何占位符！")
+                            print(f"   📋 完整模板内容：")
+                            print(f"   {template}")
+                            print(f"   💡 提示：请检查模板中使用的占位符格式")
+                            print(f"   🔧 尝试自动修复：在 Prompt 末尾添加文本插入位置...")
+                            
+                            # 根据任务类型添加合适的提示语
+                            if "分类" in task_type_name:
+                                result = template + f"\n\n待分类文本：{text}\n\n请分析上述文本并输出分类结果。"
+                            elif "摘要" in task_type_name:
+                                result = template + f"\n\n待摘要文本：\n{text}\n\n请根据上述要求生成摘要。"
+                            elif "翻译" in task_type_name:
+                                result = template + f"\n\n待翻译文本：\n{text}\n\n请翻译上述文本。"
+                            else:
+                                result = template + f"\n\n输入内容：{text}"
+                            
+                            print(f"   ✅ 已自动添加文本到 Prompt 末尾（任务类型：{task_type_name}）")
+                        else:
+                            print(f"   ✅ 成功替换 {replaced_count} 个占位符: {', '.join(replaced_placeholders)}")
+                        
+                        return result
+                    
+                    # 根据任务类型构建最终 Prompt
+                    if task_type == "生成任务":
+                        # 生成任务直接使用优化后的 prompt
+                        print("📄 使用生成任务 Prompt 模板")
+                        template = current_result.improved_prompt
+                        print(f"📋 模板长度: {len(template)} 字符")
+                        if len(template) < 100:
+                            print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
+                        print(f"📋 模板前500字符: {template[:500]}...")
+                        final_prompt = smart_replace(template, test_input, task_type)
+                        
+                    elif task_type == "分类任务":
+                        print("📄 使用分类任务 Prompt 模板")
+                        template = current_result.final_prompt
+                        print(f"📋 模板长度: {len(template)} 字符")
+                        
+                        # 检查 Prompt 质量
+                        if len(template) < 200:
+                            print(f"   ⚠️ 警告：Prompt 太短（< 200字符），可能不完整！")
+                            print(f"   💡 建议：检查 LLM 是否正确生成了完整的 final_prompt")
+                            st.warning("⚠️ 检测到生成的 Prompt 较短，可能影响分类效果。建议重新生成 Prompt。")
+                        
+                        print(f"📋 模板前500字符:\n{template[:500]}...")
+                        if len(template) > 500:
+                            print(f"📋 模板后200字符:\n...{template[-200:]}")
+                        
+                        final_prompt = smart_replace(template, test_input, task_type)
+                        
+                    elif task_type == "摘要任务":
+                        print("📄 使用摘要任务 Prompt 模板")
+                        template = current_result.final_prompt
+                        print(f"📋 模板长度: {len(template)} 字符")
+                        if len(template) < 200:
+                            print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
+                        print(f"📋 模板前500字符: {template[:500]}...")
+                        final_prompt = smart_replace(template, test_input, task_type)
+                        
+                    elif task_type == "翻译任务":
+                        print("📄 使用翻译任务 Prompt 模板")
+                        template = current_result.final_prompt
+                        print(f"📋 模板长度: {len(template)} 字符")
+                        if len(template) < 200:
+                            print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
+                        print(f"📋 模板前500字符: {template[:500]}...")
+                        final_prompt = smart_replace(template, test_input, task_type)
+                    
+                    print(f"\n✅ Prompt 构建完成")
+                    print(f"📏 最终 Prompt 长度: {len(final_prompt)} 字符")
+                    print(f"📋 最终 Prompt（前300字符）:\n{final_prompt[:300]}...")
+                    print(f"\n🔍 检查占位符是否被替换:")
+                    print(f"   - 是否还包含 '{{{{text}}}}': {'{{text}}' in final_prompt}")
+                    print(f"   - 是否还包含 '{{text}}': {'{text}' in final_prompt}")
+                    print(f"   - 是否包含测试输入: {test_input[:20] in final_prompt if len(test_input) > 20 else test_input in final_prompt}")
+                    
+                    print("\n🔧 步骤 3: 调用 LLM...")
+                    # 调用 LLM
+                    response = optimizer.llm.invoke(final_prompt)
+                    prediction = response.content
+                    print(f"✅ LLM 响应成功")
+                    print(f"📏 预测结果长度: {len(prediction)} 字符")
+                    print(f"📋 预测结果（前200字符）: {prediction[:200]}...")
+                    
+                    # 保存预测结果
+                    st.session_state.prediction = prediction
+                    st.session_state.test_reference = reference_output
+                    
+                    # 显示预测结果
+                    st.markdown("---")
+                    st.subheader("🤖 模型预测结果")
+                    st.info(prediction)
+                    
+                    print("\n🔧 步骤 4: 计算评估指标...")
+                    # 计算指标
+                    st.markdown("---")
+                    st.subheader("📊 性能评分")
+                    
+                    calc = MetricsCalculator()
+                    print(f"📊 任务类型: {task_type}")
+                    
+                    # 根据任务类型选择指标
+                    if task_type == "分类任务":
+                        print("📈 计算分类任务 Accuracy...")
+                        
+                        # 分类任务支持批量测试：按行分割
+                        test_samples = [line.strip() for line in test_input.strip().split('\n') if line.strip()]
+                        reference_labels = [line.strip() for line in reference_output.strip().split('\n') if line.strip()]
+                        
+                        print(f"   🔹 测试样本数: {len(test_samples)}")
+                        print(f"   🔹 参考标签数: {len(reference_labels)}")
+                        
+                        # 检查数量是否匹配
+                        if len(test_samples) != len(reference_labels):
+                            st.error(f"❌ 测试样本数量 ({len(test_samples)}) 与参考标签数量 ({len(reference_labels)}) 不匹配！")
+                            print(f"   ❌ 数量不匹配！")
+                        else:
+                            # 如果只有一个样本，直接使用之前的预测结果
+                            if len(test_samples) == 1:
+                                pred_clean = prediction.strip().split('\n')[0].strip()
+                                predictions = [pred_clean]
+                                print(f"   🔹 单样本测试")
+                                print(f"   🔹 预测: {pred_clean}")
+                                print(f"   🔹 参考: {reference_labels[0]}")
+                            else:
+                                # 批量预测：对每个样本调用一次
+                                predictions = []
+                                print(f"   🔹 批量测试模式")
+                                
+                                progress_bar = st.progress(0)
+                                status_text = st.empty()
+                                
+                                for idx, sample in enumerate(test_samples):
+                                    status_text.text(f"正在处理 {idx+1}/{len(test_samples)} ...")
+                                    
+                                    # 构建单个样本的 Prompt
+                                    sample_prompt = smart_replace(template, sample, task_type)
+                                    
+                                    # 调用 LLM
+                                    response = optimizer.llm.invoke(sample_prompt)
+                                    pred = response.content.strip().split('\n')[0].strip()
+                                    predictions.append(pred)
+                                    
+                                    print(f"   样本 {idx+1}: {sample[:30]}... -> 预测: {pred}")
+                                    
+                                    progress_bar.progress((idx + 1) / len(test_samples))
+                                
+                                status_text.empty()
+                                progress_bar.empty()
+                            
+                            # 计算准确率
+                            score = calc.calculate_accuracy(predictions, reference_labels)
+                            print(f"   ✅ Accuracy 分数: {score}%")
+                            
+                            metric_name = "Accuracy (准确率)"
+                            metric_key = "accuracy"
+                            
+                            col_m1, col_m2 = st.columns([1, 2])
+                            with col_m1:
+                                st.metric(label=metric_name, value=f"{score}%")
+                                st.caption(f"测试样本: {len(test_samples)} 个")
+                                st.caption(f"预测正确: {int(score * len(test_samples) / 100)} 个")
+                            with col_m2:
+                                level, color, advice = calc.get_metric_interpretation(metric_key, score)
+                                st.markdown(f"**评级：** {level}")
+                                if color == "success":
+                                    st.success(advice)
+                                elif color == "warning":
+                                    st.warning(advice)
+                                elif color == "error":
+                                    st.error(advice)
+                                else:
+                                    st.info(advice)
+                            
+                            # 显示详细结果
+                            with st.expander("📋 查看每个样本的预测结果", expanded=False):
+                                result_df_data = []
+                                for i, (sample, pred, ref) in enumerate(zip(test_samples, predictions, reference_labels), 1):
+                                    is_correct = pred.lower() == ref.lower()
+                                    result_df_data.append({
+                                        "序号": i,
+                                        "测试文本": sample[:50] + "..." if len(sample) > 50 else sample,
+                                        "预测标签": pred,
+                                        "正确标签": ref,
+                                        "结果": "✅ 正确" if is_correct else "❌ 错误"
+                                    })
+                                
+                                import pandas as pd
+                                result_df = pd.DataFrame(result_df_data)
+                                st.dataframe(result_df, use_container_width=True)
+                    
+                    elif task_type == "摘要任务":
+                        print("📈 计算摘要任务 ROUGE...")
+                        # 摘要任务：计算 ROUGE
+                        lang_code = "zh" if test_lang == "中文" else "en"
+                        print(f"   🔹 语言设置: {lang_code}")
+                        print(f"   🔹 预测长度: {len(prediction)} 字符")
+                        print(f"   🔹 参考长度: {len(reference_output)} 字符")
+                        
+                        rouge_scores = calc.calculate_rouge(prediction, reference_output, lang=lang_code)
+                        print(f"   ✅ ROUGE 分数: {rouge_scores}")
+                        
+                        st.markdown("**ROUGE 分数：**")
+                        col_r1, col_r2, col_r3 = st.columns(3)
+                        with col_r1:
+                            st.metric("ROUGE-1", f"{rouge_scores['rouge1']}%", help="单词重合度")
+                        with col_r2:
+                            st.metric("ROUGE-2", f"{rouge_scores['rouge2']}%", help="双词组重合度")
+                        with col_r3:
+                            st.metric("ROUGE-L", f"{rouge_scores['rougeL']}%", help="最长公共子序列")
+                        
+                        # 使用 ROUGE-L 作为主要评价指标
+                        level, color, advice = calc.get_metric_interpretation("rouge", rouge_scores['rougeL'])
+                        st.markdown(f"**综合评级（基于 ROUGE-L）：** {level}")
+                        if color == "success":
+                            st.success(advice)
+                        elif color == "warning":
+                            st.warning(advice)
+                        elif color == "error":
+                            st.error(advice)
+                        else:
+                            st.info(advice)
+                    
+                    elif task_type == "翻译任务":
+                        print("📈 计算翻译任务 BLEU...")
+                        # 翻译任务：计算 BLEU
+                        lang_code = "zh" if test_lang == "中文" else "en"
+                        print(f"   🔹 语言设置: {lang_code}")
+                        print(f"   🔹 预测翻译: {prediction[:100]}...")
+                        print(f"   🔹 参考翻译: {reference_output[:100]}...")
+                        
+                        bleu_score = calc.calculate_bleu(prediction, reference_output, lang=lang_code)
+                        print(f"   ✅ BLEU 分数: {bleu_score}%")
+                        
+                        col_b1, col_b2 = st.columns([1, 2])
+                        with col_b1:
+                            st.metric("BLEU Score", f"{bleu_score}%")
+                        with col_b2:
+                            level, color, advice = calc.get_metric_interpretation("bleu", bleu_score)
+                            st.markdown(f"**评级：** {level}")
+                            if color == "success":
+                                st.success(advice)
+                            elif color == "warning":
+                                st.warning(advice)
+                            elif color == "error":
+                                st.error(advice)
+                            else:
+                                st.info(advice)
+                    
+                    elif task_type == "生成任务":
+                        print("ℹ️ 生成任务使用定性评估")
+                        # 生成任务没有标准指标，使用定性评估
+                        st.info("💡 生成任务通常使用人工评估或 LLM-as-a-Judge 进行评价，暂不支持自动化指标。")
+                        st.markdown("**建议评估维度：**")
+                        st.markdown("- ✅ 是否遵循了 Prompt 的要求？")
+                        st.markdown("- ✅ 输出格式是否正确？")
+                        st.markdown("- ✅ 内容是否准确、完整？")
+                    
+                    print("\n✅ 效果验证完成！")
+                    print(f"{'='*60}\n")
+                    # 对比展示
+                    with st.expander("🔍 详细对比", expanded=False):
+                        comp_col1, comp_col2 = st.columns(2)
+                        with comp_col1:
+                            st.markdown("**🤖 模型输出：**")
+                            st.code(prediction, language=None)
+                        with comp_col2:
+                            st.markdown("**✅ 参考答案：**")
+                            st.code(reference_output, language=None)
+                    
+                except Exception as e:
+                    print(f"\n❌ 验证过程发生错误！")
+                    print(f"{'='*60}")
+                    error_msg = str(e)
+                    print(f"🐛 错误类型: {type(e).__name__}")
+                    print(f"📝 错误信息: {error_msg}")
+                    
+                    import traceback
+                    print(f"\n📄 完整堆栈信息：")
+                    traceback.print_exc()
+                    print(f"{'='*60}\n")
+                    
+                    st.error(f"❌ 评估失败：{str(e)}")
+                    import traceback
+                    with st.expander("查看错误详情"):
+                        st.code(traceback.format_exc())
 
 col_foot1, col_foot2, col_foot3 = st.columns(3)
 

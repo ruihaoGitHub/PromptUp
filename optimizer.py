@@ -256,11 +256,12 @@ class PromptOptimizer:
         print(f"{'='*60}\n")
         
         # 构建分类任务专用的 Meta-Prompt
-        system_prompt = f"""
+        # 不使用 f-string，避免花括号冲突
+        system_prompt = """
 你是一个专门构建 AI 文本分类器的专家。你的目标是编写一个**高精度**的分类 Prompt。
 
-**任务描述**：{task_description}
-**目标标签**：{', '.join(labels)}
+**任务描述**：TASK_DESCRIPTION
+**目标标签**：TARGET_LABELS
 
 **你的任务**：
 
@@ -298,8 +299,42 @@ class PromptOptimizer:
 - final_prompt: 完整的、可直接使用的分类 Prompt
 - enhancement_techniques: 使用的优化技术列表
 
-**重要**：final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的分类 Prompt。
+**关键要求 - final_prompt 必须包含占位符**：
+- final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的分类 Prompt
+- **必须在 Prompt 中明确标注待分类文本的位置**，使用以下任一占位符格式：
+  * [待分类文本] （推荐）
+  * {{text}} （两个花括号）
+  * [输入评论]
+  * [待处理文本]
+- 占位符应该放在合理的位置，比如：
+  * "评论内容：[待分类文本]"
+  * "请分析以下文本：[待分类文本]"
+  * "文本：{{text}}"
+- **不要**只说"分析这个评论"或"判断情感"而不提供具体的插入位置
+- final_prompt 必须是可以通过简单的字符串替换就能使用的模板
+
+**示例正确格式**：
+```
+你是专业的情感分析师。
+标签定义：...
+示例：...
+现在请分析以下评论的情感倾向：
+[待分类文本]
+请输出标签名称即可。
+```
+
+**示例错误格式（不要生成这样的）**：
+```
+你是专业的情感分析师。
+标签定义：...
+示例：...
+让我们分析评论的情感倾向。（❌ 缺少明确的文本插入位置）
+```
 """
+        
+        # 手动替换变量
+        system_prompt = system_prompt.replace("TASK_DESCRIPTION", task_description)
+        system_prompt = system_prompt.replace("TARGET_LABELS", ', '.join(labels))
         
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
