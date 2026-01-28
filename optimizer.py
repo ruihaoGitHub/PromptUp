@@ -13,12 +13,44 @@ from templates import get_strategy_by_scene, OPTIMIZATION_PRINCIPLES
 
 
 class OptimizedPrompt(BaseModel):
-    """优化后的 Prompt 结构"""
+    """优化后的 Prompt 结构（生成任务）"""
     thinking_process: str = Field(description="优化时的思考过程，分析原始 Prompt 的问题和改进方向")
     improved_prompt: str = Field(description="优化后的完整 Prompt，可直接使用")
     enhancement_techniques: list[str] = Field(description="使用的优化技术，如：增加角色设定、明确输出格式等")
     keywords_added: list[str] = Field(description="新增的关键词和专业术语")
     structure_applied: str = Field(description="应用的 Prompt 框架名称，如 CO-STAR、BROKE 等")
+
+
+class ClassificationPrompt(BaseModel):
+    """优化后的分类任务 Prompt 结构"""
+    thinking_process: str = Field(description="优化分析过程")
+    role_definition: str = Field(description="角色设定，例如：你是一个资深的情感分析专家")
+    label_definitions: dict[str, str] = Field(description="标签详细定义字典，Key是标签名，Value是详细判断标准")
+    few_shot_examples: list[dict[str, str]] = Field(description="自动合成的3-5个高质量少样本示例")
+    reasoning_guidance: str = Field(description="思维链引导语，帮助模型逐步分析")
+    output_format: str = Field(description="严格的输出格式要求")
+    final_prompt: str = Field(description="组合好的最终可用的完整 Prompt")
+
+class SummarizationPrompt(BaseModel):
+    """优化后的摘要任务 Prompt 结构"""
+    thinking_process: str = Field(description="优化分析过程")
+    role_setting: str = Field(description="角色设定，如：你是一位专业的技术文档编写专家")
+    extraction_rules: list[str] = Field(description="具体的提取规则，如：必须保留所有数字、日期和责任人")
+    negative_constraints: list[str] = Field(description="负面约束，明确告诉模型不要做什么")
+    format_template: str = Field(description="严格的输出格式模板，通常包含Markdown结构")
+    step_by_step_guide: str = Field(description="给模型的思考步骤，如：通读全文 -> 标记重点 -> 撰写初稿")
+    focus_areas: list[str] = Field(description="核心关注点，针对用户需求强调的信息")
+    final_prompt: str = Field(description="组合好的最终可用的摘要 Prompt，{{text}}占位符")
+
+
+class TranslationPrompt(BaseModel):
+    """优化后的翻译任务 Prompt 结构"""
+    thinking_process: str = Field(description="优化分析过程")
+    role_definition: str = Field(description="角色设定，例如：你是精通中英双语的《自然》杂志编辑")
+    style_guidelines: list[str] = Field(description="风格指南列表，例如：['保持学术严谨', '避免口语化', '保留被动语态']")
+    glossary_section: str = Field(description="构建的术语对照表部分，如果没有则留空")
+    workflow_steps: str = Field(description="翻译的工作流指令，推荐使用'直译-反思-润色'三步法")
+    final_prompt: str = Field(description="最终组合好的 Prompt 模板，待翻译文本用 {{text}} 占位")
 
 
 class PromptOptimizer:
@@ -198,6 +230,490 @@ class PromptOptimizer:
                 raise Exception(f"API 请求频率超限，请稍后再试。")
             else:
                 raise Exception(f"优化失败: {error_msg[:300]}")
+    
+    def optimize_classification(self,
+                               task_description: str,
+                               labels: list[str],
+                               example_texts: Optional[list[str]] = None) -> ClassificationPrompt:
+        """
+        针对分类任务的优化函数
+        
+        Args:
+            task_description: 分类任务描述，如 "判断用户评论的情感倾向"
+            labels: 目标标签列表，如 ["Positive", "Negative", "Neutral"]
+            example_texts: 可选的示例文本，用于生成 Few-Shot 样本
+            
+        Returns:
+            ClassificationPrompt: 优化后的分类 Prompt
+        """
+        print(f"\n{'='*60}")
+        print(f"🏷️  开始分类任务 Prompt 优化")
+        print(f"{'='*60}")
+        print(f"🔌 API 提供商: {self.provider.upper()}")
+        print(f"🤖 使用模型: {self.model}")
+        print(f"📝 任务描述: {task_description[:50]}...")
+        print(f"🏷️  目标标签: {', '.join(labels)}")
+        print(f"{'='*60}\n")
+        
+        # 构建分类任务专用的 Meta-Prompt
+        system_prompt = f"""
+你是一个专门构建 AI 文本分类器的专家。你的目标是编写一个**高精度**的分类 Prompt。
+
+**任务描述**：{task_description}
+**目标标签**：{', '.join(labels)}
+
+**你的任务**：
+
+1. **标签消歧 (Label Disambiguation)**
+   - 为每个标签编写清晰、具体的定义
+   - 明确边界情况（Edge Cases）和判断标准
+   - 说明什么样的文本属于该标签，什么不属于
+
+2. **样本合成 (Few-Shot Generation)**
+   - 根据标签定义，创作 3-5 个典型的高质量示例
+   - 示例必须覆盖不同标签，具有代表性
+   - 每个示例包含 input（输入文本）和 label（对应标签）
+
+3. **思维链设计 (Chain of Thought)**
+   - 设计引导语，让模型先分析特征，再给出分类结果
+   - 对于复杂分类任务，使用 "Let's think step by step"
+
+4. **格式锁定 (Output Format)**
+   - 明确要求模型只输出特定格式（如 JSON）
+   - 禁止模型输出多余的解释或废话
+   - 确保输出可以被代码轻松解析
+
+5. **角色设定**
+   - 为分类器设定一个专业的角色身份
+   - 增强模型对任务的理解和执行准确度
+
+**输出要求**：
+请以 JSON 格式返回结果，包含以下字段：
+- thinking_process: 你的优化思考过程
+- role_definition: 角色设定描述
+- label_definitions: 标签定义字典（键为标签名，值为详细定义）
+- few_shot_examples: 示例列表（每个包含 input 和 label 字段）
+- reasoning_guidance: 思维链引导语
+- output_format: 输出格式要求说明
+- final_prompt: 完整的、可直接使用的分类 Prompt
+- enhancement_techniques: 使用的优化技术列表
+
+**重要**：final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的分类 Prompt。
+"""
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "请为这个分类任务生成优化的 Prompt。")
+        ])
+        
+        try:
+            print("📤 正在调用 API...")
+            
+            messages = prompt_template.format_messages()
+            print(f"💬 消息长度: {len(str(messages))} 字符")
+            
+            # 调用 LLM
+            if self.provider == "openai":
+                print("🔧 使用 OpenAI JSON mode")
+                response = self.llm.invoke(
+                    messages,
+                    response_format={"type": "json_object"}
+                )
+            else:
+                print("🔧 使用 NVIDIA 标准调用")
+                response = self.llm.invoke(messages)
+            
+            # 解析结果
+            content = response.content
+            print(f"📥 收到响应，长度: {len(content)} 字符")
+            
+            # 提取 JSON
+            if "```json" in content:
+                print("🔍 检测到 JSON 代码块，正在提取...")
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                print("🔍 检测到代码块，正在提取...")
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            print("⚙️ 正在解析 JSON...")
+            result_dict = json.loads(content)
+            
+            print("✅ JSON 解析成功")
+            print("🔨 正在验证数据结构...")
+            optimized = ClassificationPrompt(**result_dict)
+            
+            print("✅ 分类 Prompt 优化完成！")
+            print(f"{'='*60}\n")
+            
+            return optimized
+            
+        except Exception as e:
+            # 错误处理
+            print(f"\n❌ 分类优化失败！")
+            print(f"{'='*60}")
+            
+            error_msg = str(e)
+            print(f"🐛 错误类型: {type(e).__name__}")
+            print(f"📝 错误详情: {error_msg[:500]}")
+            
+            import traceback
+            print(f"\n📄 完整堆栈信息：")
+            traceback.print_exc()
+            print(f"{'='*60}\n")
+            
+            # 抛出异常
+            if "404" in error_msg:
+                raise Exception(f"API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。")
+            elif "401" in error_msg or "Unauthorized" in error_msg:
+                raise Exception(f"API Key 无效或已过期。")
+            else:
+                raise Exception(f"分类优化失败: {error_msg[:300]}")
+    
+    def optimize_summarization(self,
+                              task_description: str,
+                              source_type: str,
+                              target_audience: str,
+                              focus_points: str,
+                              length_constraint: Optional[str] = None) -> SummarizationPrompt:
+        """
+        针对摘要任务的优化函数
+        
+        Args:
+            task_description: 摘要任务描述，如 "总结技术会议的核心决策"
+            source_type: 源文本类型，如 "会议记录"、"学术论文"、"新闻报道"
+            target_audience: 目标读者，如 "技术经理"、"普通用户"
+            focus_points: 核心关注点，如 "行动计划和负责人"
+            length_constraint: 篇幅限制，如 "100字以内"、"3-5个要点"
+            
+        Returns:
+            SummarizationPrompt: 优化后的摘要 Prompt
+        """
+        print(f"\n{'='*60}")
+        print(f"📝 开始摘要任务 Prompt 优化")
+        print(f"{'='*60}")
+        print(f"🔌 API 提供商: {self.provider.upper()}")
+        print(f"🤖 使用模型: {self.model}")
+        print(f"📝 任务描述: {task_description[:50]}...")
+        print(f"📄 源文本类型: {source_type}")
+        print(f"👥 目标受众: {target_audience}")
+        print(f"🎯 关注点: {focus_points[:50]}...")
+        if length_constraint:
+            print(f"📏 篇幅限制: {length_constraint}")
+        print(f"{'='*60}\n")
+        
+        # 构建摘要任务专用的 Meta-Prompt
+        length_text = f"\n**篇幅限制**：{length_constraint}" if length_constraint else ""
+        
+        system_prompt = f"""
+你是一位精通信息压缩和摘要撰写的 Prompt Engineering 专家。
+用户的目标是针对特定场景生成一个**高质量的摘要 Prompt**。
+
+**任务信息**：
+- 任务描述：{task_description}
+- 源文本类型：{source_type}
+- 目标受众：{target_audience}
+- 核心关注点：{focus_points}{length_text}
+
+**你的任务**：
+
+1. **角色沉浸 (Role Immersion)**
+   - 根据源文本类型和目标受众，设定最合适的专家角色
+   - 例如：会议记录 → "专业的会议纪要秘书"；学术论文 → "资深的科研编辑"
+
+2. **提取规则制定 (Extraction Rules)**
+   - 明确告诉模型必须保留什么信息（如：数字、日期、人名、关键决策）
+   - 针对用户的核心关注点，强调相关信息的重要性
+   - 至少提供 3-5 条具体的提取规则
+
+3. **负面约束 (Negative Constraints)**
+   - 明确告诉模型"不要"做什么
+   - 例如：不要使用模糊词汇、不要遗漏数据、不要添加原文没有的信息
+   - 防止模型"幻觉"（编造细节）
+
+4. **结构化输出 (Structured Format)**
+   - 根据源文本类型设计合适的输出格式
+   - 会议记录 → 表格或分层结构（背景、决策、行动计划）
+   - 新闻报道 → TL;DR + 关键事实
+   - 学术论文 → 研究目的、方法、结论、意义
+
+5. **思考步骤设计 (Step-by-Step Guide)**
+   - 给模型明确的处理流程，如：
+     Step 1: 通读全文，标记关键信息
+     Step 2: 根据关注点筛选内容
+     Step 3: 按结构组织信息
+     Step 4: 精简表达，确保准确
+
+6. **关注点锚定 (Focus Areas)**
+   - 将用户的核心关注点转化为具体的信息类别
+   - 在 Prompt 中多次强调这些关注点的优先级
+
+**输出要求**：
+请以 JSON 格式返回结果，包含以下字段：
+- thinking_process: 你的优化思考过程
+- role_setting: 角色设定描述
+- extraction_rules: 提取规则列表（至少3-5条）
+- negative_constraints: 负面约束列表（至少3条）
+- format_template: 输出格式模板（使用 Markdown）
+- step_by_step_guide: 处理步骤说明
+- focus_areas: 核心关注点列表
+- final_prompt: 完整的、可直接使用的摘要 Prompt（用 {{{{text}}}} 作为待摘要文本的占位符）
+
+**重要**：
+- final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的摘要 Prompt
+- 其中待摘要的文本用 {{{{text}}}} 占位符表示
+- 所有规则和约束都要整合进 final_prompt 中
+"""
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "请为这个摘要任务生成优化的 Prompt。")
+        ])
+        
+        try:
+            print("📤 正在调用 API...")
+            
+            messages = prompt_template.format_messages()
+            print(f"💬 消息长度: {len(str(messages))} 字符")
+            
+            # 调用 LLM
+            if self.provider == "openai":
+                print("🔧 使用 OpenAI JSON mode")
+                response = self.llm.invoke(
+                    messages,
+                    response_format={"type": "json_object"}
+                )
+            else:
+                print("🔧 使用 NVIDIA 标准调用")
+                response = self.llm.invoke(messages)
+            
+            # 解析结果
+            content = response.content
+            print(f"📥 收到响应，长度: {len(content)} 字符")
+            
+            # 提取 JSON
+            if "```json" in content:
+                print("🔍 检测到 JSON 代码块，正在提取...")
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                print("🔍 检测到代码块，正在提取...")
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            print("⚙️ 正在解析 JSON...")
+            result_dict = json.loads(content)
+            
+            print("✅ JSON 解析成功")
+            print("🔨 正在验证数据结构...")
+            optimized = SummarizationPrompt(**result_dict)
+            
+            print("✅ 摘要 Prompt 优化完成！")
+            print(f"{'='*60}\n")
+            
+            return optimized
+            
+        except Exception as e:
+            # 错误处理
+            print(f"\n❌ 摘要优化失败！")
+            print(f"{'='*60}")
+            
+            error_msg = str(e)
+            print(f"🐛 错误类型: {type(e).__name__}")
+            print(f"📝 错误详情: {error_msg[:500]}")
+            
+            import traceback
+            print(f"\n📄 完整堆栈信息：")
+            traceback.print_exc()
+            print(f"{'='*60}\n")
+            
+            # 抛出异常
+            if "404" in error_msg:
+                raise Exception(f"API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。")
+            elif "401" in error_msg or "Unauthorized" in error_msg:
+                raise Exception(f"API Key 无效或已过期。")
+            else:
+                raise Exception(f"摘要优化失败: {error_msg[:300]}")
+    
+    def optimize_translation(self,
+                           source_lang: str,
+                           target_lang: str,
+                           domain: str,
+                           tone: str,
+                           user_glossary: str = "") -> TranslationPrompt:
+        """
+        针对翻译任务的优化函数
+        
+        Args:
+            source_lang: 源语言，如 "中文"、"英文"
+            target_lang: 目标语言
+            domain: 应用领域，如 "通用日常"、"IT/技术文档"、"法律合同"等
+            tone: 期望风格，如 "标准/准确"、"地道/口语化"
+            user_glossary: 用户提供的术语表，格式如 "Prompt=提示词\nLLM=大语言模型"
+            
+        Returns:
+            TranslationPrompt: 优化后的翻译 Prompt
+        """
+        print(f"\n{'='*60}")
+        print(f"🌍 开始翻译任务 Prompt 优化")
+        print(f"{'='*60}")
+        print(f"🔌 API 提供商: {self.provider.upper()}")
+        print(f"🤖 使用模型: {self.model}")
+        print(f"🔄 翻译方向: {source_lang} → {target_lang}")
+        print(f"📚 应用领域: {domain}")
+        print(f"🎨 期望风格: {tone}")
+        if user_glossary:
+            print(f"📖 术语表: {len(user_glossary.split(chr(10)))} 条")
+        print(f"{'='*60}\n")
+        
+        # 处理术语表
+        glossary_text = ""
+        if user_glossary.strip():
+            glossary_text = f"""
+**用户指定术语表**：
+用户强制指定了以下术语对应关系，必须在 Prompt 中创建一个明确的 Glossary Section 来锁定这些翻译：
+{user_glossary}
+"""
+        
+        # 构建翻译任务专用的 Meta-Prompt
+        system_prompt = f"""
+你是一位精通多语言转换的 Prompt Engineering 专家。
+你的任务是构建一个**专家级的翻译 Prompt**，以解决机器翻译生硬、缺乏语境、风格不一致的问题。
+
+**任务信息**：
+- 语言方向：{source_lang} → {target_lang}
+- 应用领域：{domain}
+- 期望风格：{tone}{glossary_text}
+
+**翻译任务的核心挑战**：
+1. **语境偏差（Context Nuance）**：同一个词在不同场景有不同含义（如 "Bank" 是"银行"还是"河岸"？）
+2. **风格一致性（Tone & Style）**：是"信达雅"的文学翻译，还是"精准直白"的技术翻译？
+3. **术语一致性（Glossary Consistency）**：特定的专有名词不能乱翻，需要统一标准
+
+**你的任务**：
+构建一个包含以下高级策略的翻译 Prompt：
+
+1. **领域沉浸（Domain Immersion）**
+   - 根据领域设定最权威的专家角色
+   - IT文档 → "精通中英双语的资深软件工程师和技术文档编辑"
+   - 法律合同 → "资深国际法律翻译专家，熟悉中英法律术语体系"
+   - 文学作品 → "专业文学译者，曾翻译多部获奖作品"
+   - 学术论文 → "《自然》杂志编辑，精通学术规范和科研表达"
+
+2. **术语锁定（Glossary Locking）**
+   - 如果用户提供了术语表，必须在 Prompt 中生成一个清晰的 Mapping Table
+   - 要求模型"严格遵守"（Strictly Adhere）这些术语对应关系
+   - 格式示例：
+     ```
+     **术语表（必须严格遵守）**：
+     - Apple → 苹果公司（而非"苹果"水果）
+     - Prompt → 提示词（技术术语，不翻译为"提示"）
+     ```
+
+3. **三步翻译法（Three-Step Translation）**
+   - 在 Prompt 中要求模型按以下流程处理：
+     Step 1: 分析上下文和专业术语，进行初步直译
+     Step 2: 根据语境和领域特点，调整表达方式，确保语义准确
+     Step 3: 润色风格，使译文符合目标语言的表达习惯和期望风格
+   - 这种"慢思考"模式能显著提升质量
+
+4. **风格指南（Style Guidelines）**
+   - 根据期望风格给出具体指导：
+   - "标准/准确"：保持客观、严谨，避免添加主观色彩
+   - "地道/口语化"：使用目标语言的自然表达，避免"翻译腔"
+   - "优美/文学性"：注重韵律和美感，可适当意译
+   - "极简/摘要式"：简洁明了，去除冗余
+
+5. **保留规则（Preservation Rules）**
+   - 对于以下内容，明确要求保留原文：
+   - 代码块、命令行、文件路径
+   - 专有名词（人名、地名、品牌名）
+   - 无法翻译或不宜翻译的术语（用括号注释原文）
+
+6. **格式规范（Format Requirements）**
+   - 保持原文的段落结构和格式
+   - 数字、标点符号的规范（如：中文用全角，英文用半角）
+
+**输出要求**：
+请以 JSON 格式返回结果，包含以下字段：
+- thinking_process: 你的优化思考过程，分析这个翻译任务的特点和难点
+- role_definition: 角色设定描述，要具体到该领域最权威的专家
+- style_guidelines: 风格指南列表（list），针对期望风格的具体要求（3-5条）
+- glossary_section: 术语对照表部分的文本（如果用户提供了术语表）。如果没有则返回空字符串
+- workflow_steps: 翻译工作流指令，推荐使用"三步翻译法"的详细描述
+- final_prompt: 完整的、可直接使用的翻译 Prompt（用 {{{{text}}}} 作为待翻译文本的占位符）
+
+**重要**：
+- final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的翻译 Prompt
+- 其中待翻译的文本用 {{{{text}}}} 占位符表示
+- 所有规则、术语表、风格指南都要整合进 final_prompt 中
+- 务必体现"领域专家 + 术语锁定 + 三步翻译法"的核心策略
+"""
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "请为这个翻译任务生成优化的 Prompt。")
+        ])
+        
+        try:
+            print("📤 正在调用 API...")
+            
+            messages = prompt_template.format_messages()
+            print(f"💬 消息长度: {len(str(messages))} 字符")
+            
+            # 调用 LLM
+            if self.provider == "openai":
+                print("🔧 使用 OpenAI JSON mode")
+                response = self.llm.invoke(
+                    messages,
+                    response_format={"type": "json_object"}
+                )
+            else:
+                print("🔧 使用 NVIDIA 标准调用")
+                response = self.llm.invoke(messages)
+            
+            # 解析结果
+            content = response.content
+            print(f"📥 收到响应，长度: {len(content)} 字符")
+            
+            # 提取 JSON
+            if "```json" in content:
+                print("🔍 检测到 JSON 代码块，正在提取...")
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                print("🔍 检测到代码块，正在提取...")
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            print("⚙️ 正在解析 JSON...")
+            result_dict = json.loads(content)
+            
+            print("✅ JSON 解析成功")
+            print("🔨 正在验证数据结构...")
+            optimized = TranslationPrompt(**result_dict)
+            
+            print("✅ 翻译 Prompt 优化完成！")
+            print(f"{'='*60}\n")
+            
+            return optimized
+            
+        except Exception as e:
+            # 错误处理
+            print(f"\n❌ 翻译优化失败！")
+            print(f"{'='*60}")
+            
+            error_msg = str(e)
+            print(f"🐛 错误类型: {type(e).__name__}")
+            print(f"📝 错误详情: {error_msg[:500]}")
+            
+            import traceback
+            print(f"\n📄 完整堆栈信息：")
+            traceback.print_exc()
+            print(f"{'='*60}\n")
+            
+            # 抛出异常
+            if "404" in error_msg:
+                raise Exception(f"API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。")
+            elif "401" in error_msg or "Unauthorized" in error_msg:
+                raise Exception(f"API Key 无效或已过期。")
+            else:
+                raise Exception(f"翻译优化失败: {error_msg[:300]}")
     
     def _build_meta_prompt(self, strategy: dict, scene_desc: str) -> str:
         """构建 Meta-Prompt（教 LLM 如何优化 Prompt 的提示词）"""
