@@ -1484,19 +1484,19 @@ with algo_col1:
     
     algo_type = st.radio(
         "算法策略",
-        ["🎲 随机搜索", "🧬 遗传算法"],
-        help="随机搜索适合快速尝试；遗传算法适合深度优化",
+        ["🎲 随机搜索", "🧬 遗传算法", "🧐 贝叶斯优化"],
+        help="随机搜索：快速探索 | 遗传算法：深度进化 | 贝叶斯优化：智能决策",
         key="algo_type"
     )
     
     if algo_type == "🎲 随机搜索":
         st.info("""
         **随机搜索特点**:
-        - 每次独立随机
+        - 每次独立随机抽样
         - 搜索速度快
-        - 成本相对较低
+        - 适合快速探索
         """)
-    else:
+    elif algo_type == "🧬 遗传算法":
         st.info("""
         **遗传算法特点**:
         - 多代持续进化
@@ -1504,14 +1504,23 @@ with algo_col1:
         - 成本相对较高
         - **推荐**: 先随机搜索再遗传算法
         """)
+    else:  # 贝叶斯优化
+        st.info("""
+        **贝叶斯优化特点**:
+        - 智能决策，最少尝试
+        - 利用历史数据预测
+        - 成本最优
+        - **推荐**: API 预算有限时首选
+        """)
 
 with algo_col2:
     st.markdown("### 📊 算法对比")
     
     comparison_data = {
-        "指标": ["搜索策略", "收敛性", "成本", "适用场景"],
-        "🎲 随机搜索": ["随机抽样", "无保证", "较低", "快速探索"],
-        "🧬 遗传算法": ["进化迭代", "单调递增", "较高", "精细打磨"]
+        "指标": ["搜索策略", "收敛性", "效率", "适用场景"],
+        "🎲 随机搜索": ["随机抽样", "无保证", "低", "快速探索"],
+        "🧬 遗传算法": ["进化迭代", "单调递增", "中", "精细打磨"],
+        "🧐 贝叶斯优化": ["智能推理", "快速收敛", "高", "预算有限"]
     }
     import pandas as pd
     comparison_df = pd.DataFrame(comparison_data)
@@ -1630,7 +1639,7 @@ with search_col2:
         estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
         st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
         
-    else:  # 遗传算法
+    elif algo_type == "🧬 遗传算法":
         # 遗传算法参数
         ga_generations = st.slider(
             "进化代数 (Generations)",
@@ -1674,6 +1683,23 @@ with search_col2:
         
         # 显示预估消耗
         estimated_calls = ga_generations * ga_population * len(test_dataset) if test_dataset else 0
+        st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
+        
+    else:  # 贝叶斯优化
+        # 贝叶斯优化参数
+        bo_n_trials = st.slider(
+            "尝试次数 (Trials)",
+            min_value=10,
+            max_value=50,
+            value=20,
+            help="贝叶斯优化的尝试次数，通常20-30次即可找到好结果",
+            key="bo_n_trials"
+        )
+        
+        st.caption("💡 **智能决策**: 贝叶斯优化会根据历史结果自动选择最有希望的参数组合")
+        
+        # 显示预估消耗
+        estimated_calls = bo_n_trials * len(test_dataset) if test_dataset else 0
         st.warning(f"💰 预计 API 调用：**{estimated_calls}** 次")
         st.caption("⚠️ 遗传算法成本较高，建议先用小规模参数测试")
     
@@ -1766,7 +1792,7 @@ if start_search_btn:
                     
                     evolution_history = None  # 随机搜索无进化历史
                     
-                else:
+                elif algo_type == "🧬 遗传算法":
                     # === 遗传算法 ===
                     status.update(label="🧬 正在执行遗传算法进化...", state="running")
                     
@@ -1805,6 +1831,46 @@ if start_search_btn:
                         progress_callback=update_progress_ga
                     )
                 
+                else:
+                    # === 贝叶斯优化 ===
+                    status.update(label="🧐 正在执行贝叶斯优化...", state="running")
+                    
+                    progress_bar = st.progress(0.0)
+                    progress_text = st.empty()
+                    
+                    # 实时更新分数曲线
+                    chart_placeholder = st.empty()
+                    trial_data = []
+                    
+                    def update_progress_bo(trial, total_trials, best_score):
+                        """贝叶斯优化进度回调"""
+                        progress = trial / total_trials
+                        progress_bar.progress(progress)
+                        progress_text.text(f"试验 {trial}/{total_trials}：当前最佳 {best_score:.2f}")
+                        
+                        # 更新分数曲线
+                        if len(trial_data) > 0:
+                            chart_df = pd.DataFrame(trial_data)
+                            chart_placeholder.line_chart(chart_df.set_index("试验次数")[["得分", "最佳得分"]])
+                    
+                    # 运行贝叶斯优化
+                    all_results, best_result, trial_history = optimizer.run_bayesian_optimization(
+                        task_description=search_task_desc,
+                        task_type=search_task_type,
+                        test_dataset=test_data_list,
+                        search_space=search_space,
+                        n_trials=bo_n_trials,
+                        progress_callback=update_progress_bo
+                    )
+                    
+                    # 转换历史数据用于展示
+                    trial_data = [{
+                        "试验次数": h['trial'],
+                        "得分": h['score'],
+                        "最佳得分": h['best_score']
+                    } for h in trial_history]
+                    evolution_history = trial_history  # 重用变量名用于后续展示
+                
                 status.update(label="✅ 优化完成！", state="complete")
             
             # 阶段3: 展示结果
@@ -1815,6 +1881,9 @@ if start_search_btn:
             if algo_type == "🧬 遗传算法" and evolution_history:
                 improvement = evolution_history[-1]['best_score'] - evolution_history[0]['best_score']
                 st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧬 进化增益：+{improvement:.2f} 分")
+            elif algo_type == "🧐 贝叶斯优化" and evolution_history:
+                best_trial_num = next(i for i, h in enumerate(trial_history, 1) if h['score'] == best_result.avg_score)
+                st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧐 在第 {best_trial_num} 次试验中找到")
             else:
                 st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
             
@@ -1926,7 +1995,9 @@ if start_search_btn:
             # 保存最佳结果到 session_state
             st.session_state.best_search_result = best_result
             
-            st.success(f"✅ {'随机搜索' if algo_type == '🎲 随机搜索' else '遗传算法'}优化完成！您可以将冠军 Prompt 复制使用。")
+            # 显示完成消息
+            algo_name = {"🎲 随机搜索": "随机搜索", "🧬 遗传算法": "遗传算法", "🧐 贝叶斯优化": "贝叶斯优化"}[algo_type]
+            st.success(f"✅ {algo_name}优化完成！您可以将冠军 Prompt 复制使用。")
             
             if algo_type == "🎲 随机搜索":
                 st.info("💡 **提示**: 如果想进一步提升，可以切换到「🧬 遗传算法」进行深度优化！")
