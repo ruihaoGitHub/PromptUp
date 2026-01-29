@@ -1427,24 +1427,97 @@ else:
 
 # ========== 随机搜索优化功能 ==========
 st.markdown("---")
-st.header("🎲 Prompt 随机搜索优化 (Random Search)")
+st.header("🔬 Prompt 自动寻优实验室")
 
-with st.expander("💡 什么是随机搜索？", expanded=False):
+with st.expander("💡 什么是自动寻优？", expanded=False):
     st.markdown("""
-    **随机搜索**是一种自动化 Prompt 优化算法：
+    **自动寻优**将 Prompt 工程从手工艺提升到工业化生产：
     
-    1. **参数化分解**：将 Prompt 拆解为可变组件（角色、风格、技巧）
-    2. **随机组合**：生成多个不同的 Prompt 变体
-    3. **实战评估**：在您提供的测试集上实际运行并打分
-    4. **优胜劣汰**：自动找出得分最高的 Prompt
+    ### 🎲 随机搜索 (Random Search)
     
-    **优势**：
-    - ✅ 突破人类思维定势，发现意想不到的高分组合
-    - ✅ 基于数据的科学决策，而非凭感觉
-    - ✅ 适合对性能要求极高的场景
+    **原理**: 随机组合不同的角色、风格、技巧，在测试集上实际运行并打分
     
-    **成本提示**：如果迭代10次，测试集5条数据，将调用 LLM `10×5=50` 次
+    **优势**:
+    - ✅ 快速覆盖搜索空间
+    - ✅ 突破人类思维定势
+    - ✅ 适合快速探索
+    
+    **成本**: `迭代次数 × 测试集大小` 次 API 调用
+    
+    ---
+    
+    ### 🧬 遗传算法 (Genetic Algorithm)
+    
+    **原理**: 模拟生物进化，让高分 Prompt "繁衍"出更好的后代
+    
+    **核心机制**:
+    1. **选择**: 保留得分最高的精英个体
+    2. **交叉**: 两个高分 Prompt 交换组件（如 A 的角色 + B 的风格）
+    3. **变异**: 随机修改某些基因，引入新可能性
+    
+    **优势**:
+    - ✅ **越往后效果越好**（进化趋势）
+    - ✅ 自动收敛到局部最优
+    - ✅ 适合精细打磨
+    
+    **成本**: `代数 × 种群大小 × 测试集大小` 次 API 调用（**更高**）
+    
+    ---
+    
+    ### 📊 如何选择？
+    
+    | 场景 | 推荐算法 | 原因 |
+    |------|---------|------|
+    | 快速探索 | 随机搜索 | 低成本，广撒网 |
+    | 精细优化 | 遗传算法 | 持续进化，逼近极致 |
+    | 预算有限 | 随机搜索 | API 调用次数更少 |
+    | 追求极致 | 遗传算法 | 多代进化，突破瓶颈 |
+    
+    **建议**: 先用随机搜索找到 70-80 分的 Prompt，再用遗传算法冲刺到 90+ 分！
     """)
+
+# 算法选择器
+algo_col1, algo_col2 = st.columns([2, 3])
+
+with algo_col1:
+    st.subheader("🎯 选择优化算法")
+    
+    algo_type = st.radio(
+        "算法策略",
+        ["🎲 随机搜索", "🧬 遗传算法"],
+        help="随机搜索适合快速尝试；遗传算法适合深度优化",
+        key="algo_type"
+    )
+    
+    if algo_type == "🎲 随机搜索":
+        st.info("""
+        **随机搜索特点**:
+        - 每次独立随机
+        - 搜索速度快
+        - 成本相对较低
+        """)
+    else:
+        st.info("""
+        **遗传算法特点**:
+        - 多代持续进化
+        - 得分单调递增
+        - 成本相对较高
+        - **推荐**: 先随机搜索再遗传算法
+        """)
+
+with algo_col2:
+    st.markdown("### 📊 算法对比")
+    
+    comparison_data = {
+        "指标": ["搜索策略", "收敛性", "成本", "适用场景"],
+        "🎲 随机搜索": ["随机抽样", "无保证", "较低", "快速探索"],
+        "🧬 遗传算法": ["进化迭代", "单调递增", "较高", "精细打磨"]
+    }
+    import pandas as pd
+    comparison_df = pd.DataFrame(comparison_data)
+    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+
+st.markdown("---")
 
 search_col1, search_col2 = st.columns([3, 2])
 
@@ -1541,32 +1614,81 @@ with search_col1:
 with search_col2:
     st.subheader("⚙️ 搜索参数")
     
-    # 搜索迭代次数
-    search_iterations = st.slider(
-        "搜索迭代次数",
-        min_value=3,
-        max_value=15,
-        value=5,
-        help="尝试多少种不同的 Prompt 组合（迭代越多，找到更好 Prompt 的概率越大，但消耗的 API 调用也越多）",
-        key="search_iterations"
-    )
-    
-    # 显示预估消耗
-    estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
-    st.info(f"💰 预计消耗 API 调用次数：**{estimated_calls}** 次")
+    # 根据算法类型显示不同参数
+    if algo_type == "🎲 随机搜索":
+        # 随机搜索参数
+        search_iterations = st.slider(
+            "搜索迭代次数",
+            min_value=3,
+            max_value=20,
+            value=5,
+            help="尝试多少种不同的 Prompt 组合",
+            key="search_iterations"
+        )
+        
+        # 显示预估消耗
+        estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
+        st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
+        
+    else:  # 遗传算法
+        # 遗传算法参数
+        ga_generations = st.slider(
+            "进化代数 (Generations)",
+            min_value=3,
+            max_value=10,
+            value=5,
+            help="种群进化的代数，越多效果越好但成本越高",
+            key="ga_generations"
+        )
+        
+        ga_population = st.slider(
+            "种群规模 (Population Size)",
+            min_value=4,
+            max_value=20,
+            value=8,
+            help="每一代有多少个个体，规模越大覆盖越全面",
+            key="ga_population"
+        )
+        
+        # 高级参数
+        with st.expander("🔧 高级参数", expanded=False):
+            ga_elite_ratio = st.slider(
+                "精英保留比例",
+                min_value=0.1,
+                max_value=0.5,
+                value=0.2,
+                step=0.1,
+                help="保留多少比例的优秀个体到下一代",
+                key="ga_elite_ratio"
+            )
+            
+            ga_mutation_rate = st.slider(
+                "变异概率",
+                min_value=0.1,
+                max_value=0.5,
+                value=0.2,
+                step=0.1,
+                help="每个基因发生变异的概率",
+                key="ga_mutation_rate"
+            )
+        
+        # 显示预估消耗
+        estimated_calls = ga_generations * ga_population * len(test_dataset) if test_dataset else 0
+        st.warning(f"💰 预计 API 调用：**{estimated_calls}** 次")
+        st.caption("⚠️ 遗传算法成本较高，建议先用小规模参数测试")
     
     st.markdown("---")
     
     # 开始搜索按钮
     start_search_btn = st.button(
-        "🚀 开始随机搜索寻优",
+        f"🚀 开始{'随机搜索' if algo_type == '🎲 随机搜索' else '遗传进化'}寻优",
         type="primary",
         use_container_width=True,
         disabled=not (search_task_desc and test_dataset and len(test_dataset) >= 1),
         key="start_search_btn"
     )
 
-# 执行随机搜索
+# 执行搜索（随机搜索或遗传算法）
 if start_search_btn:
     if not api_key_input or api_key_input.strip() == "":
         st.error("❌ 请先在侧边栏配置 API Key")
@@ -1585,27 +1707,13 @@ if start_search_btn:
             )
             
             # 转换测试数据格式
-            print(f"\n{'='*60}")
-            print(f"🔍 调试信息：测试数据类型检查")
-            print(f"{'='*60}")
-            print(f"test_dataset 类型: {type(test_dataset)}")
-            print(f"test_dataset 内容: {test_dataset}")
-            
-            # 根据类型转换
             import pandas as pd
             if isinstance(test_dataset, pd.DataFrame):
                 test_data_list = test_dataset.to_dict('records')
-                print(f"✅ 从 DataFrame 转换为列表")
             elif isinstance(test_dataset, list):
                 test_data_list = test_dataset
-                print(f"✅ 已经是列表格式")
             else:
-                # 尝试转换为列表
                 test_data_list = list(test_dataset)
-                print(f"✅ 转换为列表格式")
-            
-            print(f"最终测试数据: {test_data_list}")
-            print(f"{'='*60}\n")
             
             # 阶段1: 生成搜索空间
             with st.status("🧠 正在分析任务，生成搜索空间...", expanded=True) as status:
@@ -1633,35 +1741,82 @@ if start_search_btn:
                     for tech in search_space.techniques:
                         st.write(f"• {tech}")
                 
-                status.update(label="正在执行随机搜索...", state="running")
+                # 根据算法类型执行不同逻辑
+                if algo_type == "🎲 随机搜索":
+                    # === 随机搜索 ===
+                    status.update(label="🎲 正在执行随机搜索...", state="running")
+                    
+                    progress_bar = st.progress(0.0)
+                    progress_text = st.empty()
+                    
+                    def update_progress_random(current, total, message):
+                        progress = current / total
+                        progress_bar.progress(progress)
+                        progress_text.text(f"{message} ({current}/{total})")
+                    
+                    # 运行随机搜索
+                    all_results, best_result = optimizer.run_random_search(
+                        task_description=search_task_desc,
+                        task_type=search_task_type,
+                        test_dataset=test_data_list,
+                        search_space=search_space,
+                        iterations=search_iterations,
+                        progress_callback=update_progress_random
+                    )
+                    
+                    evolution_history = None  # 随机搜索无进化历史
+                    
+                else:
+                    # === 遗传算法 ===
+                    status.update(label="🧬 正在执行遗传算法进化...", state="running")
+                    
+                    progress_bar = st.progress(0.0)
+                    progress_text = st.empty()
+                    
+                    # 实时更新进化曲线
+                    chart_placeholder = st.empty()
+                    history_data = []
+                    
+                    def update_progress_ga(gen, total_gen, best_score, avg_score):
+                        """遗传算法进度回调"""
+                        progress = gen / total_gen
+                        progress_bar.progress(progress)
+                        progress_text.text(f"第 {gen}/{total_gen} 代：最佳 {best_score:.2f}, 平均 {avg_score:.2f}")
+                        
+                        # 更新进化曲线
+                        history_data.append({
+                            "代数": gen,
+                            "最高分": best_score,
+                            "平均分": avg_score
+                        })
+                        chart_df = pd.DataFrame(history_data)
+                        chart_placeholder.line_chart(chart_df.set_index("代数"))
+                    
+                    # 运行遗传算法
+                    all_results, best_result, evolution_history = optimizer.run_genetic_algorithm(
+                        task_description=search_task_desc,
+                        task_type=search_task_type,
+                        test_dataset=test_data_list,
+                        search_space=search_space,
+                        generations=ga_generations,
+                        population_size=ga_population,
+                        elite_ratio=ga_elite_ratio,
+                        mutation_rate=ga_mutation_rate,
+                        progress_callback=update_progress_ga
+                    )
                 
-                # 阶段2: 执行随机搜索
-                progress_bar = st.progress(0.0)
-                progress_text = st.empty()
-                
-                def update_progress(current, total, message):
-                    progress = current / total
-                    progress_bar.progress(progress)
-                    progress_text.text(f"{message} ({current}/{total})")
-                
-                # 运行搜索
-                all_results, best_result = optimizer.run_random_search(
-                    task_description=search_task_desc,
-                    task_type=search_task_type,
-                    test_dataset=test_data_list,
-                    search_space=search_space,
-                    iterations=search_iterations,
-                    progress_callback=update_progress
-                )
-                
-                status.update(label="✅ 搜索完成！", state="complete")
+                status.update(label="✅ 优化完成！", state="complete")
             
             # 阶段3: 展示结果
             st.markdown("---")
-            st.header("🏆 搜索结果")
+            st.header("🏆 优化结果")
             
             # 最佳结果高亮展示
-            st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
+            if algo_type == "🧬 遗传算法" and evolution_history:
+                improvement = evolution_history[-1]['best_score'] - evolution_history[0]['best_score']
+                st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧬 进化增益：+{improvement:.2f} 分")
+            else:
+                st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
             
             result_col1, result_col2 = st.columns([3, 2])
             
@@ -1675,17 +1830,23 @@ if start_search_btn:
                 st.markdown(f"**🎨 风格：** {best_result.style}")
                 st.markdown(f"**🔧 技巧：** {best_result.technique}")
                 st.markdown(f"**💯 得分：** {best_result.avg_score:.2f}")
+                
+                if algo_type == "🧬 遗传算法" and evolution_history:
+                    st.markdown("---")
+                    st.markdown("**🧬 进化统计**")
+                    st.markdown(f"• 初始最高分: {evolution_history[0]['best_score']:.2f}")
+                    st.markdown(f"• 最终最高分: {evolution_history[-1]['best_score']:.2f}")
+                    st.markdown(f"• 进化提升: +{improvement:.2f} 分")
             
             # 所有结果排行榜
             st.markdown("---")
-            st.subheader("📋 完整搜索记录")
+            st.subheader("📋 完整优化记录")
             
             # 构建结果表格
-            import pandas as pd
             results_df = pd.DataFrame([
                 {
                     "排名": i + 1,
-                    "迭代ID": r.iteration_id,
+                    "ID": r.iteration_id,
                     "角色": r.role,
                     "风格": r.style,
                     "技巧": r.technique,
@@ -1700,36 +1861,78 @@ if start_search_btn:
                 hide_index=True
             )
             
-            # 可视化分数分布
+            # 可视化
             st.markdown("---")
-            st.subheader("📈 得分分布图")
             
-            import matplotlib.pyplot as plt
-            import matplotlib
-            matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-            matplotlib.rcParams['axes.unicode_minus'] = False
-            
-            fig, ax = plt.subplots(figsize=(10, 4))
-            scores = [r.avg_score for r in all_results]
-            iterations = [r.iteration_id for r in all_results]
-            
-            ax.plot(iterations, scores, marker='o', linewidth=2, markersize=8)
-            ax.axhline(y=best_result.avg_score, color='r', linestyle='--', label=f'最佳得分: {best_result.avg_score:.2f}')
-            ax.set_xlabel('迭代次数')
-            ax.set_ylabel('得分')
-            ax.set_title('随机搜索得分变化')
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            
-            st.pyplot(fig)
+            if algo_type == "🧬 遗传算法" and evolution_history:
+                # 遗传算法：显示进化曲线
+                st.subheader("📈 进化曲线")
+                
+                import matplotlib.pyplot as plt
+                import matplotlib
+                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+                matplotlib.rcParams['axes.unicode_minus'] = False
+                
+                fig, ax = plt.subplots(figsize=(10, 5))
+                
+                generations = [h['generation'] for h in evolution_history]
+                best_scores = [h['best_score'] for h in evolution_history]
+                avg_scores = [h['avg_score'] for h in evolution_history]
+                worst_scores = [h['worst_score'] for h in evolution_history]
+                
+                ax.plot(generations, best_scores, marker='o', linewidth=2, markersize=8, label='最高分', color='#2ecc71')
+                ax.plot(generations, avg_scores, marker='s', linewidth=2, markersize=6, label='平均分', color='#3498db')
+                ax.plot(generations, worst_scores, marker='^', linewidth=1, markersize=5, label='最低分', color='#e74c3c', alpha=0.5)
+                
+                ax.fill_between(generations, worst_scores, best_scores, alpha=0.2, color='#3498db')
+                
+                ax.set_xlabel('代数 (Generation)')
+                ax.set_ylabel('得分 (Score)')
+                ax.set_title('遗传算法进化曲线 - 可以看到得分持续上升！')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                st.pyplot(fig)
+                
+                # 进化数据表
+                with st.expander("📊 查看详细进化数据", expanded=False):
+                    evo_df = pd.DataFrame(evolution_history)
+                    evo_df.columns = ['代数', '最高分', '平均分', '最低分']
+                    st.dataframe(evo_df, use_container_width=True, hide_index=True)
+                
+            else:
+                # 随机搜索：显示得分分布
+                st.subheader("📈 得分分布图")
+                
+                import matplotlib.pyplot as plt
+                import matplotlib
+                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+                matplotlib.rcParams['axes.unicode_minus'] = False
+                
+                fig, ax = plt.subplots(figsize=(10, 4))
+                scores = [r.avg_score for r in all_results]
+                iterations = [r.iteration_id for r in all_results]
+                
+                ax.plot(iterations, scores, marker='o', linewidth=2, markersize=8, color='#3498db')
+                ax.axhline(y=best_result.avg_score, color='r', linestyle='--', linewidth=2, label=f'最佳得分: {best_result.avg_score:.2f}')
+                ax.set_xlabel('迭代次数')
+                ax.set_ylabel('得分')
+                ax.set_title('随机搜索得分变化 - 随机波动，无规律')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                st.pyplot(fig)
             
             # 保存最佳结果到 session_state
             st.session_state.best_search_result = best_result
             
-            st.success("✅ 随机搜索优化完成！您可以将冠军 Prompt 复制使用。")
+            st.success(f"✅ {'随机搜索' if algo_type == '🎲 随机搜索' else '遗传算法'}优化完成！您可以将冠军 Prompt 复制使用。")
+            
+            if algo_type == "🎲 随机搜索":
+                st.info("💡 **提示**: 如果想进一步提升，可以切换到「🧬 遗传算法」进行深度优化！")
             
         except Exception as e:
-            st.error(f"❌ 搜索过程出错：{str(e)}")
+            st.error(f"❌ 优化过程出错：{str(e)}")
             import traceback
             with st.expander("查看错误详情"):
                 st.code(traceback.format_exc())
