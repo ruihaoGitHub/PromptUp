@@ -38,6 +38,10 @@ NVIDIA_MODELS = {
         "qwen/qwen2.5-72b-instruct",
         "qwen/qwen2.5-7b-instruct",
         "qwen/qwen2.5-coder-32b-instruct",
+        "qwen/qwen3-next-80b-a3b-instruct",
+        "qwen/qwen3-next-80b-a3b-thinking",
+        "qwen/qwen3-coder-480b-a35b-instruct",
+        "qwen/qwen3-235b-a22b",
     ],
     
     "Mistral 系列": [

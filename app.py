@@ -65,18 +65,57 @@ st.markdown("""
         margin: 0.25rem;
         font-size: 0.9rem;
     }
+    /* 隐藏 text_area 的 Ctrl+Enter 提示 */
+    .stTextArea [data-baseweb=base-input] {
+        background-color: transparent;
+    }
+    .stTextArea [data-baseweb=base-input] span[data-baseweb="tooltip"] {
+        display: none !important;
+    }
+    /* 隐藏文本框右下角的 "Press Ctrl+Enter to apply" 提示 */
+    .stTextArea > div > div > div > div:last-child {
+        display: none !important;
+    }
+    .stTextArea [data-baseweb="tooltip"] {
+        display: none !important;
+    }
+    /* 更彻底地隐藏所有 tooltip 提示 */
+    div[data-baseweb="tooltip"] {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+    .stTextArea textarea {
+        font-family: monospace;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # 标题区域
 st.markdown('<p class="main-header">🚀 AI Prompt 自动优化大师</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">输入简单的想法，系统将自动利用 <b>结构化模板、语义扩展、关键词增强</b> 技术为您生成专家级 Prompt</p>', unsafe_allow_html=True)
 
 # 侧边栏配置
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    # 任务类型选择（新增）
+    # 任务类型选择（新增）- 增大字体
+    st.markdown("""
+    <style>
+        /* 设置任务类型标题字体 */
+        div[data-testid="stRadio"] > label > div[data-testid="stMarkdownContainer"] > p {
+            font-size: 1.3rem !important;
+            font-weight: 600 !important;
+        }
+        /* 设置任务类型选项字体 */
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            font-size: 1.15rem !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] > div:last-child {
+            font-size: 1.15rem !important;
+            font-weight: 500 !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
     task_type = st.radio(
         "📋 任务类型",
         ["生成任务", "分类任务", "摘要任务", "翻译任务"],
@@ -126,28 +165,37 @@ with st.sidebar:
             help="NVIDIA API 端点"
         )
         
-        # NVIDIA 模型选择（使用完整模型列表）
-        nvidia_models = get_model_list("推荐模型")
+        # NVIDIA 模型选择（层级结构：先选分类，再选模型）
+        from nvidia_models import NVIDIA_MODELS, get_model_categories
         
-        model_choice = st.selectbox(
-            "选择模型",
-            nvidia_models,
-            index=0,
-            help="推荐使用 Llama 3.1 405B 或 Mistral Large 以获得最佳优化效果"
+        # 第一层：选择Publisher分类
+        categories = list(NVIDIA_MODELS.keys())
+        
+        # 设置默认分类为 Qwen 系列
+        default_category_index = categories.index("Qwen 系列") if "Qwen 系列" in categories else 0
+        
+        selected_category = st.selectbox(
+            "📂 选择模型系列",
+            categories,
+            index=default_category_index,
+            help="先选择模型发布商/系列"
         )
         
-        # 高级选项：显示所有模型
-        with st.expander("🔧 查看所有可用模型", expanded=False):
-            all_models = get_model_list("all")
-            st.info(f"共有 {len(all_models)} 个可用模型")
-            model_choice_advanced = st.selectbox(
-                "从全部模型中选择",
-                all_models,
-                key="advanced_model"
-            )
-            if st.button("使用此模型"):
-                model_choice = model_choice_advanced
-                st.success(f"已切换到：{model_choice}")
+        # 第二层：选择该分类下的具体模型
+        models_in_category = NVIDIA_MODELS[selected_category]
+        
+        # 设置默认模型
+        default_model = "qwen/qwen2.5-7b-instruct"
+        default_model_index = 0
+        if default_model in models_in_category:
+            default_model_index = models_in_category.index(default_model)
+        
+        model_choice = st.selectbox(
+            "🤖 选择具体模型",
+            models_in_category,
+            index=default_model_index,
+            help=f"{selected_category} 下的所有可用模型"
+        )
 
         
     else:  # OpenAI
@@ -239,6 +287,16 @@ with st.sidebar:
         - "总结论文要点"
         """)
 
+# 根据任务类型显示不同的副标题
+if task_type == "生成任务":
+    st.markdown('<p class="sub-header">输入简单的想法，系统将自动利用 <b>结构化模板、语义扩展、关键词增强</b> 技术为您生成专家级 Prompt</p>', unsafe_allow_html=True)
+elif task_type == "分类任务":
+    st.markdown('<p class="sub-header">系统将为您设计专业的分类器 Prompt，自动生成 <b>标签定义、Few-shot 示例</b> 和最佳分类策略</p>', unsafe_allow_html=True)
+elif task_type == "摘要任务":
+    st.markdown('<p class="sub-header">系统将为您设计智能的摘要器 Prompt，自动优化 <b>信息提取规则、压缩策略</b> 和输出格式</p>', unsafe_allow_html=True)
+elif task_type == "翻译任务":
+    st.markdown('<p class="sub-header">系统将为您构建专业的翻译器 Prompt，整合 <b>术语表、风格指南</b> 和领域知识库</p>', unsafe_allow_html=True)
+
 # 初始化 session state
 if 'result' not in st.session_state:
     st.session_state.result = None
@@ -266,13 +324,15 @@ if task_type == "生成任务":
             "输入您的简单 Prompt",
             height=150,
             placeholder="例如：帮我写个贪吃蛇游戏",
-            help="描述您想做什么，可以很简单"
+            help="描述您想做什么，可以很简单。",
+            key="gen_user_input"
         )
         
         scene_input = st.text_input(
             "场景/补充描述（可选）",
             placeholder="例如：Python, 给小孩学编程用",
-            help="提供更多背景信息，如编程语言、目标受众等"
+            help="提供更多背景信息，如编程语言、目标受众等。",
+            key="gen_scene_input"
         )
         
         # 优化按钮
@@ -280,11 +340,21 @@ if task_type == "生成任务":
 
     # 生成任务优化逻辑
     if start_btn:
-        if not user_input or user_input.strip() == "":
-            st.error("❌ 请先输入 Prompt")
-        elif not api_key_input or api_key_input.strip() == "":
+        if not api_key_input or api_key_input.strip() == "":
             st.error("❌ 请先在侧边栏配置 API Key")
         else:
+            # 如果用户没有输入，使用默认值
+            if not user_input or user_input.strip() == "":
+                user_input = "帮我写一个贪吃蛇游戏"
+                st.info("💡 未输入内容，使用默认示例：" + user_input)
+            
+            if not scene_input or scene_input.strip() == "":
+                scene_input = "python，给小孩学编程用"
+            
+            # 保存原始prompt到session_state以便A/B对比测试使用
+            st.session_state.original_user_input = user_input
+            st.session_state.original_scene_input = scene_input
+            
             with st.spinner("🔮 正在分析语义、提取关键词、构建结构化模板..."):
                 try:
                     # 创建优化器
@@ -388,10 +458,9 @@ if task_type == "生成任务":
             label_visibility="collapsed"
         )
         
-        # 复制按钮
-        if st.button("📋 复制到剪贴板", use_container_width=True):
-            st.code(result.improved_prompt, language=None)
-            st.success("✅ 已显示在代码框中，请手动复制")
+        # 直接显示代码框，带有复制按钮
+        st.code(result.improved_prompt, language=None)
+        st.caption("📌 点击代码框右上角的复制按钮即可复制")
 
 # A/B 对比测试区域
 if st.session_state.result:
@@ -404,25 +473,30 @@ if st.session_state.result:
     with col_test2:
         if st.button("🚀 运行对比测试", type="primary", use_container_width=True):
             if not st.session_state.comparison_done:
-                with st.spinner("⏳ 正在运行两个版本的 Prompt，请稍候..."):
-                    try:
-                        optimizer = PromptOptimizer(
-                            api_key=api_key_input,
-                            model=model_choice,
-                            base_url=base_url if base_url else None,
-                            provider=api_provider.lower()
-                        )
-                        
-                        res_orig, res_opt = optimizer.compare_results(
-                            original_prompt=user_input,
-                            optimized_prompt=result.improved_prompt
-                        )
-                        
-                        st.session_state.comparison_results = (res_orig, res_opt)
-                        st.session_state.comparison_done = True
-                        
-                    except Exception as e:
-                        st.error(f"❌ 对比测试失败：{str(e)}")
+                # 检查是否有保存的原始prompt
+                if 'original_user_input' not in st.session_state or not st.session_state.original_user_input:
+                    st.error("❌ 未找到原始 Prompt，请先运行一次优化。")
+                else:
+                    with st.spinner("⏳ 正在运行两个版本的 Prompt，请稍候..."):
+                        try:
+                            optimizer = PromptOptimizer(
+                                api_key=api_key_input,
+                                model=model_choice,
+                                base_url=base_url if base_url else None,
+                                provider=api_provider.lower()
+                            )
+                            
+                            # 使用保存的原始prompt
+                            res_orig, res_opt = optimizer.compare_results(
+                                original_prompt=st.session_state.original_user_input,
+                                optimized_prompt=result.improved_prompt
+                            )
+                            
+                            st.session_state.comparison_results = (res_orig, res_opt)
+                            st.session_state.comparison_done = True
+                            
+                        except Exception as e:
+                            st.error(f"❌ 对比测试失败：{str(e)}")
     
     # 显示对比结果
     if st.session_state.comparison_done and st.session_state.comparison_results:
@@ -449,14 +523,16 @@ elif task_type == "分类任务":
             "任务描述",
             height=100,
             placeholder="例如：判断用户评论的情感倾向\n或：识别客服对话中的用户意图",
-            help="清晰描述这是一个什么样的分类任务"
+            help="清晰描述这是一个什么样的分类任务。",
+            key="cls_task_desc"
         )
         
         # 标签输入
         labels_input = st.text_input(
             "目标标签（用逗号分隔）",
-            placeholder="例如：Positive, Negative, Neutral",
-            help="输入所有可能的分类标签，用逗号分隔"
+            placeholder="例如：积极, 消极, 中立",
+            help="输入所有可能的分类标签，用逗号分隔。",
+            key="cls_labels"
         )
         
         # 可选：示例文本
@@ -471,11 +547,18 @@ elif task_type == "分类任务":
     
     # 分类任务优化逻辑
     if build_btn:
-        if not task_description or not labels_input:
-            st.error("❌ 请填写任务描述和目标标签！")
-        elif not api_key_input or api_key_input.strip() == "":
+        if not api_key_input or api_key_input.strip() == "":
             st.error("❌ 请先在侧边栏配置 API Key")
         else:
+            # 如果用户没有输入，使用默认值
+            if not task_description or task_description.strip() == "":
+                task_description = "对电商产品评论进行情感分类，识别用户的满意度和态度"
+                st.info("💡 未输入任务描述，使用默认示例")
+            
+            if not labels_input or labels_input.strip() == "":
+                labels_input = "积极, 消极, 中立"
+                st.info("💡 未输入标签，使用默认标签：" + labels_input)
+            
             # 解析标签
             labels_list = [label.strip() for label in labels_input.split(",") if label.strip()]
             
@@ -577,10 +660,10 @@ elif task_type == "分类任务":
                 label_visibility="collapsed"
             )
             
-            # 复制按钮
-            if st.button("📋 复制到剪贴板", use_container_width=True, key="copy_classification"):
-                st.code(result.final_prompt, language=None)
-                st.success("✅ 已显示在代码框中，请手动复制")
+            
+            # 直接显示代码框，带有复制按钮
+            st.code(result.final_prompt, language=None)
+            st.caption("📌 点击代码框右上角的复制按钮即可复制")
 
 elif task_type == "摘要任务":
     with col1:
@@ -591,8 +674,9 @@ elif task_type == "摘要任务":
         task_description = st.text_area(
             "任务描述",
             height=100,
-            placeholder="例如：总结技术会议的核心决策和行动计划\n或：提取学术论文的研究贡献和创新点",
-            help="清晰描述摘要的目的"
+            placeholder="例如：总结技术会议的核心决策和行动计划",
+            help="清晰描述摘要的目的",
+            key="sum_task_desc"
         )
         
         # 源文本类型
@@ -615,7 +699,7 @@ elif task_type == "摘要任务":
         # 目标受众
         target_audience = st.text_input(
             "👥 目标受众",
-            placeholder="例如：技术经理、研发总监、普通用户、投资人",
+            placeholder="例如：投资人",
             help="摘要将呈现给谁看？这会影响语言风格和详细程度"
         )
         
@@ -623,7 +707,7 @@ elif task_type == "摘要任务":
         focus_points = st.text_area(
             "🎯 核心关注点",
             height=100,
-            placeholder="例如：\n- Bug 的根本原因\n- 提出的解决方案\n- 负责人和截止时间\n- 资源需求",
+            placeholder="例如：负责人和截止时间\n- 资源需求",
             help="摘要中必须保留哪些信息？"
         )
         
@@ -642,11 +726,20 @@ elif task_type == "摘要任务":
     
     # 摘要任务优化逻辑
     if build_summarization_btn:
-        if not task_description or not target_audience or not focus_points:
-            st.error("❌ 请填写任务描述、目标受众和核心关注点！")
-        elif not api_key_input or api_key_input.strip() == "":
+        if not api_key_input or api_key_input.strip() == "":
             st.error("❌ 请先在侧边栏配置 API Key")
         else:
+            # 如果用户没有输入，使用默认值
+            if not task_description or task_description.strip() == "":
+                task_description = "总结技术会议的核心决策、行动计划和关键信息"
+                st.info("💡 未输入任务描述，使用默认示例")
+            
+            if not target_audience or target_audience.strip() == "":
+                target_audience = "技术团队和管理层"
+            
+            if not focus_points or focus_points.strip() == "":
+                focus_points = "决策结果, 责任人, 时间节点"
+            
             with st.spinner("🔮 正在生成提取规则、设计输出格式、构建摘要器..."):
                 try:
                     # 创建优化器
@@ -739,10 +832,10 @@ elif task_type == "摘要任务":
                 label_visibility="collapsed"
             )
             
-            # 复制按钮
-            if st.button("📋 复制到剪贴板", use_container_width=True, key="copy_summarization"):
-                st.code(result.final_prompt, language=None)
-                st.success("✅ 已显示在代码框中，请手动复制")
+            
+            # 直接显示代码框，带有复制按钮
+            st.code(result.final_prompt, language=None)
+            st.caption("📌 点击代码框右上角的复制按钮即可复制")
 
 # 翻译任务分支
 elif task_type == "翻译任务":
@@ -763,7 +856,7 @@ elif task_type == "翻译任务":
             target_lang = st.selectbox(
                 "目标语言",
                 ["英文", "中文", "日文", "法文", "德文", "西班牙文", "韩文"],
-                index=1,
+                index=0,
                 help="翻译后的目标语言"
             )
         
@@ -817,7 +910,8 @@ Fine-tuning=微调
 修炼=Cultivation
 筑基=Foundation Establishment
 金丹=Golden Core""",
-            help="专有名词的强制对应关系，模型将严格遵守"
+            help="专有名词的强制对应关系，模型将严格遵守",
+            key="trans_glossary"
         )
         
         # 构建翻译器按钮
@@ -830,6 +924,27 @@ Fine-tuning=微调
         elif not api_key_input or api_key_input.strip() == "":
             st.error("❌ 请先在侧边栏配置 API Key")
         else:
+            # 处理术语表输入，使用默认值
+            if not glossary_input or glossary_input.strip() == "":
+                # 根据选择的领域提供默认术语
+                if domain == "IT/技术文档":
+                    glossary_input = """Prompt Engineering=提示词工程
+LLM=大语言模型
+Token=令牌
+Fine-tuning=微调
+API=应用程序接口
+Machine Learning=机器学习"""
+                elif domain == "文学/小说":
+                    glossary_input = """修炼=Cultivation
+筑基=Foundation Establishment
+金丹=Golden Core
+元婴=Nascent Soul"""
+                else:
+                    glossary_input = ""  # 其他领域使用空术语表
+                
+                if glossary_input:
+                    st.info(f"💡 未输入术语库，使用 {domain} 领域的默认示例")
+            
             with st.spinner("🔮 正在设计领域专家角色、植入术语库、构建三步翻译法..."):
                 try:
                     # 创建优化器
@@ -914,10 +1029,10 @@ Fine-tuning=微调
                 label_visibility="collapsed"
             )
             
-            # 复制按钮
-            if st.button("📋 复制到剪贴板", use_container_width=True, key="copy_translation"):
-                st.code(result.final_prompt, language=None)
-                st.success("✅ 已显示在代码框中，请手动复制")
+            
+            # 直接显示代码框，带有复制按钮
+            st.code(result.final_prompt, language=None)
+            st.caption("📌 点击代码框右上角的复制按钮即可复制")
             
             # 使用示例
             with st.expander("💡 使用示例", expanded=False):
@@ -941,36 +1056,67 @@ Fine-tuning=微调
                 """)
 
 # ========== 效果验证实验室 ==========
-st.markdown("---")
-st.header("🧪 效果验证实验室")
-st.markdown("在此输入测试数据和标准答案，系统将自动计算性能指标（Accuracy / BLEU / ROUGE）。")
+# 生成任务是基础实验，不需要效果验证
+if task_type != "生成任务":
+    st.markdown("---")
+    st.header("🧪 效果验证实验室")
+    
+    # 根据任务类型显示对应的指标说明
+    if task_type == "分类任务":
+        st.markdown("在此输入测试数据和标准答案，系统将自动计算 **Accuracy（准确率）** 指标。")
+    elif task_type == "摘要任务":
+        st.markdown("在此输入测试数据和标准摘要，系统将自动计算 **ROUGE** 指标。")
+    elif task_type == "翻译任务":
+        st.markdown("在此输入测试数据和标准译文，系统将自动计算 **BLEU** 指标。")
+    
+    # 判断是否已经生成了优化后的 Prompt
+    has_result = False
+    current_result = None
+    placeholder_text = ""
+    
+    if task_type == "分类任务" and st.session_state.classification_result:
+        has_result = True
+        current_result = st.session_state.classification_result
+        placeholder_text = "待分类的文本"
+    elif task_type == "摘要任务" and st.session_state.summarization_result:
+        has_result = True
+        current_result = st.session_state.summarization_result
+        placeholder_text = "待摘要的文本"
+    elif task_type == "翻译任务" and st.session_state.translation_result:
+        has_result = True
+        current_result = st.session_state.translation_result
+        placeholder_text = "待翻译的文本"
+    
+    if not has_result:
+        st.info("💡 请先在上方完成 Prompt 优化，然后再进行效果验证。")
+    else:
+        st.success(f"✅ 检测到已优化的 {task_type} Prompt，可以开始验证！")
+    
+    # 初始化默认测试数据（如果还没有）
+    if "test_input" not in st.session_state or not st.session_state.test_input:
+        if task_type == "分类任务":
+            st.session_state.test_input = """这款产品确实有它的优点，但也存在一些明显的不足，整体来说还算能接受。
+客服态度极差！反复推诿，完全不解决问题，强烈不推荐！
+物流速度超快，包装很精美，产品质量也很好，五星好评！
+说实话，这个价格买到这样的质量，我觉得挺值的。
+虽然宣传得天花乱坠，但实际使用下来感觉一般般，有点失望。"""
+            st.session_state.reference_output = """中立
+消极
+积极
+积极
+消极"""
+        elif task_type == "摘要任务":
+            st.session_state.test_input = """近年来，人工智能技术在自然语言处理领域取得了突破性进展。大型语言模型（LLM）如GPT、BERT等的出现，彻底改变了NLP任务的解决方式。这些模型通过在海量文本数据上进行预训练，学习到了丰富的语言知识和模式。
 
-# 判断是否已经生成了优化后的 Prompt
-has_result = False
-current_result = None
-placeholder_text = ""
+在实际应用中，大模型展现出了强大的zero-shot和few-shot学习能力。即使没有针对特定任务进行微调，它们也能通过精心设计的提示词（Prompt）来完成各种复杂任务，包括文本分类、摘要生成、机器翻译等。这种能力大大降低了NLP应用的开发门槛。
 
-if task_type == "生成任务" and st.session_state.result:
-    has_result = True
-    current_result = st.session_state.result
-    placeholder_text = "待处理的输入"
-elif task_type == "分类任务" and st.session_state.classification_result:
-    has_result = True
-    current_result = st.session_state.classification_result
-    placeholder_text = "待分类的文本"
-elif task_type == "摘要任务" and st.session_state.summarization_result:
-    has_result = True
-    current_result = st.session_state.summarization_result
-    placeholder_text = "待摘要的文本"
-elif task_type == "翻译任务" and st.session_state.translation_result:
-    has_result = True
-    current_result = st.session_state.translation_result
-    placeholder_text = "待翻译的文本"
+然而，大模型也面临着一些挑战。首先是计算资源消耗巨大，训练和部署成本高昂。其次是模型的可解释性较差，难以理解其决策过程。此外，模型可能会产生偏见或生成不准确的内容，需要谨慎使用。
 
-if not has_result:
-    st.info("💡 请先在上方完成 Prompt 优化，然后再进行效果验证。")
-else:
-    st.success(f"✅ 检测到已优化的 {task_type} Prompt，可以开始验证！")
+未来的研究方向包括：开发更高效的模型压缩技术、提升模型的推理能力、增强模型的可控性和安全性等。随着技术的不断进步，大模型有望在更多领域发挥重要作用。"""
+            st.session_state.reference_output = """大型语言模型在NLP领域取得突破，具有强大的zero-shot和few-shot学习能力，但也面临计算成本高、可解释性差、可能产生偏见等挑战。未来研究将聚焦于模型压缩、推理能力提升和安全性增强。"""
+        elif task_type == "翻译任务":
+            st.session_state.test_input = """随着人工智能技术的飞速发展，提示词工程（Prompt Engineering）已成为一个新兴且重要的研究领域。它不仅关乎如何与AI模型有效沟通，更涉及如何充分发挥模型的潜力。优秀的提示词设计需要深入理解模型的工作原理、任务需求以及目标用户的期望。"""
+            st.session_state.reference_output = """With the rapid development of artificial intelligence technology, Prompt Engineering has emerged as an important and evolving research field. It is not only about effectively communicating with AI models, but also about fully unleashing their potential. Excellent prompt design requires a deep understanding of how models work, task requirements, and target users' expectations."""
     
     # 验证区域
     col_test1, col_test2 = st.columns(2)
@@ -995,13 +1141,21 @@ else:
             placeholder_hint = f"输入{placeholder_text}..."
             help_text = "输入需要测试的数据"
         
+        # 添加加载示例数据按钮（实际上默认已加载，这个按钮作为提示）
+        st.caption("💡 已自动加载复杂示例数据，您可以直接测试或修改")
+        
         test_input = st.text_area(
             "输入测试数据",
+            value=st.session_state.get("test_input", ""),
             height=150,
             placeholder=placeholder_hint,
-            key="test_input",
+            key="test_input_area",
             help=help_text
         )
+        
+        # 更新session_state
+        if test_input != st.session_state.get("test_input", ""):
+            st.session_state.test_input = test_input
         
         # 语言设置（用于 ROUGE 和 BLEU）
         if task_type in ["摘要任务", "翻译任务"]:
@@ -1034,11 +1188,16 @@ else:
         
         reference_output = st.text_area(
             "参考答案",
+            value=st.session_state.get("reference_output", ""),
             height=150,
             placeholder=ref_placeholder,
-            key="reference_output",
+            key="reference_output_area",
             help=ref_help
         )
+        
+        # 更新session_state
+        if reference_output != st.session_state.get("reference_output", ""):
+            st.session_state.reference_output = reference_output
         
         st.caption("💡 **为什么需要参考答案？**")
         if task_type == "分类任务":
@@ -1048,7 +1207,11 @@ else:
     
     # 运行评估按钮
     if st.button("🚀 运行 Prompt 并计算指标", type="primary", use_container_width=True):
-        if not test_input or not reference_output:
+        # 从session_state获取实际值
+        actual_test_input = st.session_state.get("test_input", "")
+        actual_reference_output = st.session_state.get("reference_output", "")
+        
+        if not actual_test_input or not actual_reference_output:
             st.error("❌ 请同时提供测试输入和参考答案！")
         elif not api_key_input or api_key_input.strip() == "":
             st.error("❌ 请先在侧边栏配置 API Key")
@@ -1058,8 +1221,8 @@ else:
             print(f"🧪 开始效果验证")
             print(f"{'='*60}")
             print(f"📋 任务类型: {task_type}")
-            print(f"📝 测试输入长度: {len(test_input)} 字符")
-            print(f"✅ 参考答案长度: {len(reference_output)} 字符")
+            print(f"📝 测试输入长度: {len(actual_test_input)} 字符")
+            print(f"✅ 参考答案长度: {len(actual_reference_output)} 字符")
             print(f"🔌 API 提供商: {api_provider}")
             print(f"🤖 使用模型: {model_choice}")
             print(f"{'='*60}\n")
@@ -1169,7 +1332,7 @@ else:
                         if len(template) < 100:
                             print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
                         print(f"📋 模板前500字符: {template[:500]}...")
-                        final_prompt = smart_replace(template, test_input, task_type)
+                        final_prompt = smart_replace(template, actual_test_input, task_type)
                         
                     elif task_type == "分类任务":
                         print("📄 使用分类任务 Prompt 模板")
@@ -1186,7 +1349,7 @@ else:
                         if len(template) > 500:
                             print(f"📋 模板后200字符:\n...{template[-200:]}")
                         
-                        final_prompt = smart_replace(template, test_input, task_type)
+                        final_prompt = smart_replace(template, actual_test_input, task_type)
                         
                     elif task_type == "摘要任务":
                         print("📄 使用摘要任务 Prompt 模板")
@@ -1195,7 +1358,7 @@ else:
                         if len(template) < 200:
                             print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
                         print(f"📋 模板前500字符: {template[:500]}...")
-                        final_prompt = smart_replace(template, test_input, task_type)
+                        final_prompt = smart_replace(template, actual_test_input, task_type)
                         
                     elif task_type == "翻译任务":
                         print("📄 使用翻译任务 Prompt 模板")
@@ -1204,7 +1367,7 @@ else:
                         if len(template) < 200:
                             print(f"   ⚠️ 警告：Prompt 太短，可能不完整！")
                         print(f"📋 模板前500字符: {template[:500]}...")
-                        final_prompt = smart_replace(template, test_input, task_type)
+                        final_prompt = smart_replace(template, actual_test_input, task_type)
                     
                     print(f"\n✅ Prompt 构建完成")
                     print(f"📏 最终 Prompt 长度: {len(final_prompt)} 字符")
@@ -1212,7 +1375,7 @@ else:
                     print(f"\n🔍 检查占位符是否被替换:")
                     print(f"   - 是否还包含 '{{{{text}}}}': {'{{text}}' in final_prompt}")
                     print(f"   - 是否还包含 '{{text}}': {'{text}' in final_prompt}")
-                    print(f"   - 是否包含测试输入: {test_input[:20] in final_prompt if len(test_input) > 20 else test_input in final_prompt}")
+                    print(f"   - 是否包含测试输入: {actual_test_input[:20] in final_prompt if len(actual_test_input) > 20 else actual_test_input in final_prompt}")
                     
                     print("\n🔧 步骤 3: 调用 LLM...")
                     # 调用 LLM
@@ -1224,7 +1387,7 @@ else:
                     
                     # 保存预测结果
                     st.session_state.prediction = prediction
-                    st.session_state.test_reference = reference_output
+                    st.session_state.test_reference = actual_reference_output
                     
                     # 显示预测结果
                     st.markdown("---")
@@ -1239,13 +1402,48 @@ else:
                     calc = MetricsCalculator()
                     print(f"📊 任务类型: {task_type}")
                     
+                    # 辅助函数：清理分类标签输出
+                    def clean_classification_output(text: str) -> str:
+                        """清理分类输出，提取真正的标签"""
+                        import re
+                        import json
+                        
+                        text = text.strip()
+                        
+                        # 尝试解析JSON格式
+                        try:
+                            # 检查是否是JSON格式
+                            if text.startswith('{') or text.startswith('['):
+                                data = json.loads(text)
+                                # 尝试提取label字段
+                                if isinstance(data, dict):
+                                    if 'label' in data:
+                                        return str(data['label']).strip()
+                                    if 'category' in data:
+                                        return str(data['category']).strip()
+                                    if 'result' in data:
+                                        return str(data['result']).strip()
+                        except:
+                            pass
+                        
+                        # 移除常见前缀
+                        text = re.sub(r'^(标签[:：]|分类[:：]|结果[:：]|label[:：]|category[:：])\s*', '', text, flags=re.IGNORECASE)
+                        
+                        # 移除引号
+                        text = text.strip('"\'')
+                        
+                        # 只取第一行第一个词
+                        text = text.split('\n')[0].split()[0] if text else text
+                        
+                        return text.strip()
+                    
                     # 根据任务类型选择指标
                     if task_type == "分类任务":
                         print("📈 计算分类任务 Accuracy...")
                         
                         # 分类任务支持批量测试：按行分割
-                        test_samples = [line.strip() for line in test_input.strip().split('\n') if line.strip()]
-                        reference_labels = [line.strip() for line in reference_output.strip().split('\n') if line.strip()]
+                        test_samples = [line.strip() for line in actual_test_input.strip().split('\n') if line.strip()]
+                        reference_labels = [line.strip() for line in actual_reference_output.strip().split('\n') if line.strip()]
                         
                         print(f"   🔹 测试样本数: {len(test_samples)}")
                         print(f"   🔹 参考标签数: {len(reference_labels)}")
@@ -1257,10 +1455,11 @@ else:
                         else:
                             # 如果只有一个样本，直接使用之前的预测结果
                             if len(test_samples) == 1:
-                                pred_clean = prediction.strip().split('\n')[0].strip()
+                                pred_clean = clean_classification_output(prediction)
                                 predictions = [pred_clean]
                                 print(f"   🔹 单样本测试")
-                                print(f"   🔹 预测: {pred_clean}")
+                                print(f"   🔹 原始预测: {prediction[:100]}")
+                                print(f"   🔹 清理后: {pred_clean}")
                                 print(f"   🔹 参考: {reference_labels[0]}")
                             else:
                                 # 批量预测：对每个样本调用一次
@@ -1278,7 +1477,7 @@ else:
                                     
                                     # 调用 LLM
                                     response = optimizer.llm.invoke(sample_prompt)
-                                    pred = response.content.strip().split('\n')[0].strip()
+                                    pred = clean_classification_output(response.content)
                                     predictions.append(pred)
                                     
                                     print(f"   样本 {idx+1}: {sample[:30]}... -> 预测: {pred}")
@@ -1335,9 +1534,9 @@ else:
                         lang_code = "zh" if test_lang == "中文" else "en"
                         print(f"   🔹 语言设置: {lang_code}")
                         print(f"   🔹 预测长度: {len(prediction)} 字符")
-                        print(f"   🔹 参考长度: {len(reference_output)} 字符")
+                        print(f"   🔹 参考长度: {len(actual_reference_output)} 字符")
                         
-                        rouge_scores = calc.calculate_rouge(prediction, reference_output, lang=lang_code)
+                        rouge_scores = calc.calculate_rouge(prediction, actual_reference_output, lang=lang_code)
                         print(f"   ✅ ROUGE 分数: {rouge_scores}")
                         
                         st.markdown("**ROUGE 分数：**")
@@ -1367,9 +1566,9 @@ else:
                         lang_code = "zh" if test_lang == "中文" else "en"
                         print(f"   🔹 语言设置: {lang_code}")
                         print(f"   🔹 预测翻译: {prediction[:100]}...")
-                        print(f"   🔹 参考翻译: {reference_output[:100]}...")
+                        print(f"   🔹 参考翻译: {actual_reference_output[:100]}...")
                         
-                        bleu_score = calc.calculate_bleu(prediction, reference_output, lang=lang_code)
+                        bleu_score = calc.calculate_bleu(prediction, actual_reference_output, lang=lang_code)
                         print(f"   ✅ BLEU 分数: {bleu_score}%")
                         
                         col_b1, col_b2 = st.columns([1, 2])
@@ -1406,7 +1605,7 @@ else:
                             st.code(prediction, language=None)
                         with comp_col2:
                             st.markdown("**✅ 参考答案：**")
-                            st.code(reference_output, language=None)
+                            st.code(actual_reference_output, language=None)
                     
                 except Exception as e:
                     print(f"\n❌ 验证过程发生错误！")
@@ -1426,68 +1625,70 @@ else:
                         st.code(traceback.format_exc())
 
 # ========== 随机搜索优化功能 ==========
-st.markdown("---")
-st.header("🔬 Prompt 自动寻优实验室")
+# 生成任务不需要自动寻优功能，因为它是基础实验
+if task_type != "生成任务":
+    st.markdown("")  # 添加一些间距但不用分隔线
+    st.header("🔬 Prompt 自动寻优实验室")
 
-with st.expander("💡 什么是自动寻优？", expanded=False):
-    st.markdown("""
-    **自动寻优**将 Prompt 工程从手工艺提升到工业化生产：
-    
-    ### 🎲 随机搜索 (Random Search)
-    
-    **原理**: 随机组合不同的角色、风格、技巧，在测试集上实际运行并打分
-    
-    **优势**:
-    - ✅ 快速覆盖搜索空间
-    - ✅ 突破人类思维定势
-    - ✅ 适合快速探索
-    
-    **成本**: `迭代次数 × 测试集大小` 次 API 调用
-    
-    ---
-    
-    ### 🧬 遗传算法 (Genetic Algorithm)
-    
-    **原理**: 模拟生物进化，让高分 Prompt "繁衍"出更好的后代
-    
-    **核心机制**:
-    1. **选择**: 保留得分最高的精英个体
-    2. **交叉**: 两个高分 Prompt 交换组件（如 A 的角色 + B 的风格）
-    3. **变异**: 随机修改某些基因，引入新可能性
-    
-    **优势**:
-    - ✅ **越往后效果越好**（进化趋势）
-    - ✅ 自动收敛到局部最优
-    - ✅ 适合精细打磨
-    
-    **成本**: `代数 × 种群大小 × 测试集大小` 次 API 调用（**更高**）
-    
-    ---
-    
-    ### 📊 如何选择？
-    
-    | 场景 | 推荐算法 | 原因 |
-    |------|---------|------|
-    | 快速探索 | 随机搜索 | 低成本，广撒网 |
-    | 精细优化 | 遗传算法 | 持续进化，逼近极致 |
-    | 预算有限 | 随机搜索 | API 调用次数更少 |
-    | 追求极致 | 遗传算法 | 多代进化，突破瓶颈 |
-    
-    **建议**: 先用随机搜索找到 70-80 分的 Prompt，再用遗传算法冲刺到 90+ 分！
-    """)
+    with st.expander("💡 什么是自动寻优？", expanded=False):
+        st.markdown("""
+        **自动寻优**将 Prompt 工程从手工艺提升到工业化生产：
+        
+        ### 🎲 随机搜索 (Random Search)
+        
+        **原理**: 随机组合不同的角色、风格、技巧，在测试集上实际运行并打分
+        
+        **优势**:
+        - ✅ 快速覆盖搜索空间
+        - ✅ 突破人类思维定势
+        - ✅ 适合快速探索
+        
+        **成本**: `迭代次数 × 测试集大小` 次 API 调用
+        
+        ---
+        
+        ### 🧬 遗传算法 (Genetic Algorithm)
+        
+        **原理**: 模拟生物进化，让高分 Prompt "繁衍"出更好的后代
+        
+        **核心机制**:
+        1. **选择**: 保留得分最高的精英个体
+        2. **交叉**: 两个高分 Prompt 交换组件（如 A 的角色 + B 的风格）
+        3. **变异**: 随机修改某些基因，引入新可能性
+        
+        **优势**:
+        - ✅ **越往后效果越好**（进化趋势）
+        - ✅ 自动收敛到局部最优
+        - ✅ 适合精细打磨
+        
+        **成本**: `代数 × 种群大小 × 测试集大小` 次 API 调用（**更高**）
+        
+        ---
+        
+        ### 📊 如何选择？
+        
+        | 场景 | 推荐算法 | 原因 |
+        |------|---------|------|
+        | 快速探索 | 随机搜索 | 低成本，广撒网 |
+        | 精细优化 | 遗传算法 | 持续进化，逼近极致 |
+        | 预算有限 | 随机搜索 | API 调用次数更少 |
+        | 追求极致 | 遗传算法 | 多代进化，突破瓶颈 |
+        
+        **建议**: 先用随机搜索找到 70-80 分的 Prompt，再用遗传算法冲刺到 90+ 分！
+        """)
 
-# 算法选择器
-algo_col1, algo_col2 = st.columns([2, 3])
+    # 算法选择器
+    algo_col1, algo_col2 = st.columns([2, 3])
 
-with algo_col1:
-    st.subheader("🎯 选择优化算法")
-    
-    algo_type = st.radio(
-        "算法策略",
-        ["🎲 随机搜索", "🧬 遗传算法", "🧐 贝叶斯优化"],
-        help="随机搜索：快速探索 | 遗传算法：深度进化 | 贝叶斯优化：智能决策",
-        key="algo_type"
-    )
+    with algo_col1:
+        st.subheader("🎯 选择优化算法")
+        
+        algo_type = st.radio(
+            "算法策略",
+            ["🎲 随机搜索", "🧬 遗传算法", "🧐 贝叶斯优化"],
+            help="随机搜索：快速探索 | 遗传算法：深度进化 | 贝叶斯优化：智能决策",
+            key="algo_type"
+        )
     
     if algo_type == "🎲 随机搜索":
         st.info("""
@@ -1513,500 +1714,624 @@ with algo_col1:
         - **推荐**: API 预算有限时首选
         """)
 
-with algo_col2:
-    st.markdown("### 📊 算法对比")
-    
-    comparison_data = {
-        "指标": ["搜索策略", "收敛性", "效率", "适用场景"],
-        "🎲 随机搜索": ["随机抽样", "无保证", "低", "快速探索"],
-        "🧬 遗传算法": ["进化迭代", "单调递增", "中", "精细打磨"],
-        "🧐 贝叶斯优化": ["智能推理", "快速收敛", "高", "预算有限"]
-    }
-    import pandas as pd
-    comparison_df = pd.DataFrame(comparison_data)
-    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+    with algo_col2:
+        st.markdown("### 📊 算法对比")
+        
+        comparison_data = {
+            "指标": ["搜索策略", "收敛性", "效率", "适用场景"],
+            "🎲 随机搜索": ["随机抽样", "无保证", "低", "快速探索"],
+            "🧬 遗传算法": ["进化迭代", "单调递增", "中", "精细打磨"],
+            "🧐 贝叶斯优化": ["智能推理", "快速收敛", "高", "预算有限"]
+        }
+        import pandas as pd
+        comparison_df = pd.DataFrame(comparison_data)
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
-st.markdown("---")
 
-search_col1, search_col2 = st.columns([3, 2])
+    search_col1, search_col2 = st.columns([3, 2])
 
-with search_col1:
-    st.subheader("📋 配置搜索任务")
-    
-    # 任务类型选择
-    search_task_type = st.selectbox(
-        "选择任务类型",
-        ["classification", "summarization", "translation"],
-        format_func=lambda x: {
+    with search_col1:
+        st.subheader("📋 搜索任务")
+        
+        # 自动跟随左上角的任务类型选择
+        task_type_mapping = {
+            "生成任务": "generation",
+            "分类任务": "classification",
+            "摘要任务": "summarization",
+            "翻译任务": "translation"
+        }
+        search_task_type = task_type_mapping.get(task_type, "classification")
+        
+        # 显示当前任务类型
+        task_display_names = {
+            "generation": "生成任务 (Generation)",
             "classification": "分类任务 (Classification)",
             "summarization": "摘要任务 (Summarization)",
             "translation": "翻译任务 (Translation)"
-        }[x],
-        key="search_task_type"
-    )
-    
-    # 任务描述
-    search_task_desc = st.text_area(
-        "任务描述",
-        placeholder="例如：对用户评论进行情感分类（积极/消极/中立）",
-        height=80,
-        key="search_task_desc"
-    )
-    
-    # 测试数据集
-    st.markdown("#### 📥 测试数据集 (Validation Set)")
-    st.caption("请提供至少2-3个测试样本和对应的标准答案，用于评估不同 Prompt 的实际效果")
-    
-    # 根据任务类型提供不同的默认数据
-    if search_task_type == "classification":
-        default_test_data = [
-            # 简单案例（基准）
-            {"input": "这个产品真的很好用，非常满意！", "ground_truth": "积极"},
-            {"input": "价格太贵了，性价比不高", "ground_truth": "消极"},
-            
-            # 困难案例：混合情感
-            {"input": "产品质量不错，但是价格有点贵，总体来说还行", "ground_truth": "中立"},
-            {"input": "功能很强大，就是操作有点复杂，需要学习成本", "ground_truth": "中立"},
-            
-            # 困难案例：反讽语气
-            {"input": "哇，真是太'棒'了，收到就坏了，非常'满意'呢", "ground_truth": "消极"},
-            
-            # 困难案例：委婉表达
-            {"input": "emmm...怎么说呢，可能不太适合我吧", "ground_truth": "消极"},
-            
-            # 困难案例：纯客观描述
-            {"input": "包装是红色的，尺寸和描述一致，昨天收到的", "ground_truth": "中立"},
-            
-            # 困难案例：期待落空
-            {"input": "本来抱了很大期望，结果就这？", "ground_truth": "消极"}
-        ]
-    elif search_task_type == "summarization":
-        default_test_data = [
-            {
-                "input": "今天召开了产品评审会议，讨论了新功能的设计方案。会议决定采用方案A，由张三负责开发，预计2周完成。此外，还讨论了市场推广策略，决定先在一线城市试点，收集用户反馈后再全面推广。",
-                "ground_truth": "会议决定采用方案A，张三负责开发（2周），先在一线城市试点后再全面推广。"
-            },
-            {
-                "input": "公司年会将于下月15日举行，地点在市中心大酒店。各部门需提前准备节目，人力资源部负责协调。预算控制在50万以内，需要提前预定场地和晚宴。",
-                "ground_truth": "年会下月15日市中心大酒店举行，各部门准备节目，HR协调，预算50万。"
-            },
-            {
-                "input": "根据最新销售数据，Q3季度营收同比增长35%，主要来自于新产品线的贡献。其中，AI产品线增长最快，达到了60%的同比增长率。但是，传统产品线出现了10%的下滑，需要引起重视。",
-                "ground_truth": "Q3营收增长35%，AI产品线增长60%，但传统产品下滑10%需关注。"
-            },
-            {
-                "input": "用户反馈主要集中在三个方面：首先是界面设计需要优化，有42%的用户提到操作不够直观；其次是加载速度慢，有35%的用户抱怨；最后是缺少某些核心功能，占23%。总体满意度为3.2分（满分5分）。",
-                "ground_truth": "用户反馈：界面不直观(42%)、加载慢(35%)、缺功能(23%)，满意度3.2/5分。"
-            }
-        ]
-    else:  # translation
-        default_test_data = [
+        }
+        st.info(f"📌 当前任务类型：**{task_display_names[search_task_type]}**")
+        
+        # 任务描述
+        search_task_desc = st.text_area(
+            "任务描述",
+            placeholder="例如：对用户评论进行情感分类（积极/消极/中立）",
+            height=80,
+            key="search_task_desc",
+            help="清晰描述您的任务目标。"
+        )
+        
+        # 测试数据集
+        st.markdown("#### 📥 测试数据集 (Validation Set)")
+        st.caption("请提供至少2-3个测试样本和对应的标准答案，用于评估不同 Prompt 的实际效果")
+        
+        # CSV 文件上传选项
+        upload_col1, upload_col2, upload_col3 = st.columns([2, 1, 1])
+        with upload_col1:
+            uploaded_file = st.file_uploader(
+                "📤 上传CSV文件（可选）",
+                type=['csv'],
+                help="CSV文件应包含两列：'input'（测试输入）和'ground_truth'（标准答案）"
+            )
+        with upload_col2:
+            if uploaded_file is not None:
+                st.success("✅ 文件已加载")
+            else:
+                st.info("💡 或手动编辑")
+        with upload_col3:
+            # 提供示例CSV下载
+            example_csv = "input,ground_truth\n这个产品真的很好用，非常满意！,积极\n价格太贵了，性价比不高,消极"
+            st.download_button(
+                label="📥 示例CSV",
+                data=example_csv,
+                file_name="example_dataset.csv",
+                mime="text/csv",
+                help="下载CSV格式示例"
+            )
+        
+        # 根据任务类型提供不同的默认数据
+        if search_task_type == "generation":
+            default_test_data = [
+                {"input": "写一个Python函数计算斐波那契数列", "ground_truth": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"},
+                {"input": "用一句话介绍人工智能", "ground_truth": "人工智能是计算机科学的一个分支，致力于开发能够模拟人类智能行为的系统。"},
+                {"input": "列举三个学习编程的技巧", "ground_truth": "1. 每天坚持练习\n2. 阅读优秀的代码\n3. 参与开源项目"},
+            ]
+        elif search_task_type == "classification":
+            default_test_data = [
+                # 简单案例（明确情感）
+                {"input": "这个产品真的很好用，非常满意！强烈推荐给大家！", "ground_truth": "积极"},
+                {"input": "价格太贵了，性价比不高，不建议购买", "ground_truth": "消极"},
+                {"input": "质量超出预期，物流也很快，好评！", "ground_truth": "积极"},
+                {"input": "用了一天就坏了，客服态度还很差，太失望了", "ground_truth": "消极"},
+                
+                # 中等难度：混合情感
+                {"input": "产品质量不错，但是价格有点贵，总体来说还行", "ground_truth": "中立"},
+                {"input": "功能很强大，就是操作有点复杂，需要学习成本", "ground_truth": "中立"},
+                {"input": "外观设计很漂亮，但实用性一般", "ground_truth": "中立"},
+                {"input": "包装精美，产品本身中规中矩", "ground_truth": "中立"},
+                
+                # 困难案例：反讽语气
+                {"input": "哇，真是太'棒'了，收到就坏了，非常'满意'呢", "ground_truth": "消极"},
+                {"input": "呵呵，这质量配得上这个价格", "ground_truth": "消极"},
+                {"input": "果然是'大品牌'，用了三天就出问题了", "ground_truth": "消极"},
+                
+                # 困难案例：委婉表达
+                {"input": "emmm...怎么说呢，可能不太适合我吧", "ground_truth": "消极"},
+                {"input": "和我想象的有些差距，可能是我期望太高了", "ground_truth": "消极"},
+                {"input": "如果价格能便宜一点就更好了", "ground_truth": "消极"},
+                
+                # 困难案例：纯客观描述
+                {"input": "包装是红色的，尺寸和描述一致，昨天收到的", "ground_truth": "中立"},
+                {"input": "产品材质是塑料的，重量大约500克", "ground_truth": "中立"},
+                
+                # 困难案例：期待落空
+                {"input": "本来抱了很大期望，结果就这？还不如之前用的旧款", "ground_truth": "消极"},
+                {"input": "看了那么多好评才买的，实际体验名不副实", "ground_truth": "消极"},
+                
+                # 极端案例：情感强烈
+                {"input": "简直是我用过最好的产品！五星好评都不够表达我的满意！", "ground_truth": "积极"},
+                {"input": "垃圾中的垃圾！浪费钱！强烈建议大家不要买！", "ground_truth": "消极"}
+            ]
+        elif search_task_type == "summarization":
+            default_test_data = [
+                {
+                    "input": "今天召开了产品评审会议，讨论了新功能的设计方案。会议决定采用方案A，由张三负责开发，预计2周完成。此外，还讨论了市场推广策略，决定先在一线城市试点，收集用户反馈后再全面推广。李四提出了关于成本控制的建议，会议同意将预算压缩到原计划的80%。",
+                    "ground_truth": "会议决定采用方案A，张三负责开发（2周），先在一线城市试点后全面推广，预算压缩至原计划80%。"
+                },
+                {
+                    "input": "公司年会将于下月15日举行，地点在市中心大酒店。各部门需提前准备节目，人力资源部负责协调。预算控制在50万以内，需要提前预定场地和晚宴。会议还讨论了员工表彰环节，计划颁发10个年度优秀员工奖和3个最佳团队奖。",
+                    "ground_truth": "年会下月15日市中心大酒店举行，各部门准备节目，HR协调，预算50万，将颁发优秀员工奖和团队奖。"
+                },
+                {
+                    "input": "根据最新销售数据，Q3季度营收同比增长35%，主要来自于新产品线的贡献。其中，AI产品线增长最快，达到了60%的同比增长率。但是，传统产品线出现了10%的下滑，需要引起重视。公司计划在Q4加大对传统产品的升级投入，同时继续扩大AI产品的市场份额。海外市场表现强劲，营收占比已达到30%。",
+                    "ground_truth": "Q3营收增长35%，AI产品线增长60%，传统产品下滑10%。Q4将升级传统产品，海外市场占比30%。"
+                },
+                {
+                    "input": "用户反馈主要集中在三个方面：首先是界面设计需要优化，有42%的用户提到操作不够直观；其次是加载速度慢，有35%的用户抱怨；最后是缺少某些核心功能，占23%。总体满意度为3.2分（满分5分）。技术团队已经着手解决加载速度问题，预计下个版本会有显著改善。产品团队正在评估新功能的优先级。",
+                    "ground_truth": "用户反馈：界面不直观(42%)、加载慢(35%)、缺功能(23%)，满意度3.2/5分。技术团队优化速度，产品团队评估新功能。"
+                },
+                {
+                    "input": "研究报告显示，全球气候变化正在加速。过去十年，全球平均温度上升了0.8摄氏度，极端天气事件频率增加了30%。北极冰川融化速度是20年前的两倍，海平面平均上升了3.4毫米/年。报告呼吁各国加强减排力度，预计如果不采取措施，到2050年全球温度将上升2-3摄氏度，带来严重后果。",
+                    "ground_truth": "全球温度十年升0.8℃，极端天气增30%，北极冰川融化加速，海平面升3.4mm/年。需加强减排，否则2050年升温2-3℃。"
+                },
+                {
+                    "input": "新款智能手机发布会上，CEO介绍了三大创新功能：首先是革命性的电池技术，续航时间提升50%；其次是AI摄影系统，支持100倍变焦和夜景增强；最后是5G+卫星通信，即使在无信号区域也能保持连接。售价方面，基础版5999元，高配版7999元，将于下月正式开售。预购活动已经启动，前10000名用户可享受9折优惠。",
+                    "ground_truth": "新手机三大创新：电池续航提升50%、AI摄影100倍变焦、5G+卫星通信。基础版5999元，高配版7999元，下月开售，前1万名9折。"
+                },
+                {
+                    "input": "科技公司宣布裁员计划，将在全球范围内裁减15%的员工，约8000人。CEO在内部信中解释，这是由于经济放缓和业务重组的需要。被裁员工将获得N+3个月的补偿，并享受6个月的医疗保险延续。公司同时宣布将关闭三个海外办事处，并暂停所有非核心项目的开发。股价在消息公布后下跌8%。",
+                    "ground_truth": "公司裁员15%约8000人，因经济放缓和业务重组。补偿N+3月，医保延续6月，关闭三个海外办事处，暂停非核心项目，股价跌8%。"
+                },
+                {
+                    "input": "医学研究团队在《自然》杂志发表论文，称发现了一种新的癌症治疗方法。该方法通过基因编辑技术，使免疫细胞能够识别并攻击癌细胞。临床试验显示，65%的患者肿瘤明显缩小，30%完全消失。研究团队计划在未来两年内进行大规模临床试验。但专家警告，这种方法成本高昂，单次治疗费用可能超过100万元，且存在免疫过激反应的风险。",
+                    "ground_truth": "新癌症疗法通过基因编辑使免疫细胞攻击癌细胞，临床试验65%患者肿瘤缩小，30%消失。计划两年内大规模试验，但成本超100万元，有风险。"
+                },
+                {
+                    "input": "教育部发布新规，要求中小学生每天体育活动时间不少于1小时，学校必须开设游泳、足球等至少5种体育课程。同时禁止布置超过合理时长的作业，小学一二年级不留书面家庭作业，三至六年级每天作业时间不超过60分钟。学校需建立学生健康档案，每学期进行两次体质测试。违规学校将被通报批评，情节严重的取消评优资格。新规将于9月1日起实施。",
+                    "ground_truth": "教育新规：学生每天体育1小时，开设至少5种体育课程；小学低年级无书面作业，高年级作业≤60分钟；建立健康档案，学期两次体测。9月1日实施，违规通报。"
+                },
+                {
+                    "input": "电商平台发布双十一预热活动规则：11月1日0点开始，用户可领取满300减50的优惠券，每人限领3张。活动期间，超过10万件商品参与5折秒杀，每天10点和20点各开放一次。会员用户可提前2小时进入秒杀专场。购物满1000元免运费，满2000元赠送价值200元的礼品卡。支付方式支持花呗12期免息。平台预计活动期间GMV将突破5000亿元，创历史新高。",
+                    "ground_truth": "双十一活动：11月1日起领满300减50券（限3张），10万+商品5折秒杀（10点/20点），会员提前2小时。满1000免运费，满2000送200元卡，花呗12期免息。预计GMV破5000亿。"
+                }
+            ]
+        else:  # translation
+            default_test_data = [
+            # 基础科技术语
             {"input": "人工智能正在改变世界", "ground_truth": "Artificial intelligence is changing the world"},
             {"input": "机器学习是AI的核心技术", "ground_truth": "Machine learning is the core technology of AI"},
             {"input": "深度学习模型在图像识别领域取得了突破性进展", "ground_truth": "Deep learning models have made breakthrough progress in the field of image recognition"},
+            
+            # 技术细节
             {"input": "自然语言处理技术使计算机能够理解和生成人类语言", "ground_truth": "Natural language processing technology enables computers to understand and generate human language"},
-            {"input": "大语言模型的出现标志着人工智能发展的新阶段", "ground_truth": "The emergence of large language models marks a new stage in the development of artificial intelligence"}
-        ]
-    
-    # 使用 data_editor 让用户编辑测试数据
-    test_dataset = st.data_editor(
-        default_test_data,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "input": st.column_config.TextColumn("测试输入", width="medium"),
-            "ground_truth": st.column_config.TextColumn("标准答案", width="medium")
-        },
-        key="search_test_dataset"
-    )
-
-with search_col2:
-    st.subheader("⚙️ 搜索参数")
-    
-    # 根据算法类型显示不同参数
-    if algo_type == "🎲 随机搜索":
-        # 随机搜索参数
-        search_iterations = st.slider(
-            "搜索迭代次数",
-            min_value=3,
-            max_value=20,
-            value=5,
-            help="尝试多少种不同的 Prompt 组合",
-            key="search_iterations"
-        )
-        
-        # 显示预估消耗
-        estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
-        st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
-        
-    elif algo_type == "🧬 遗传算法":
-        # 遗传算法参数
-        ga_generations = st.slider(
-            "进化代数 (Generations)",
-            min_value=3,
-            max_value=10,
-            value=5,
-            help="种群进化的代数，越多效果越好但成本越高",
-            key="ga_generations"
-        )
-        
-        ga_population = st.slider(
-            "种群规模 (Population Size)",
-            min_value=4,
-            max_value=20,
-            value=8,
-            help="每一代有多少个个体，规模越大覆盖越全面",
-            key="ga_population"
-        )
-        
-        # 高级参数
-        with st.expander("🔧 高级参数", expanded=False):
-            ga_elite_ratio = st.slider(
-                "精英保留比例",
-                min_value=0.1,
-                max_value=0.5,
-                value=0.2,
-                step=0.1,
-                help="保留多少比例的优秀个体到下一代",
-                key="ga_elite_ratio"
-            )
+            {"input": "大语言模型的出现标志着人工智能发展的新阶段", "ground_truth": "The emergence of large language models marks a new stage in the development of artificial intelligence"},
+            {"input": "神经网络通过反向传播算法进行参数优化", "ground_truth": "Neural networks optimize parameters through backpropagation algorithm"},
             
-            ga_mutation_rate = st.slider(
-                "变异概率",
-                min_value=0.1,
-                max_value=0.5,
-                value=0.2,
-                step=0.1,
-                help="每个基因发生变异的概率",
-                key="ga_mutation_rate"
-            )
-        
-        # 显示预估消耗
-        estimated_calls = ga_generations * ga_population * len(test_dataset) if test_dataset else 0
-        st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
-        
-    else:  # 贝叶斯优化
-        # 贝叶斯优化参数
-        bo_n_trials = st.slider(
-            "尝试次数 (Trials)",
-            min_value=10,
-            max_value=50,
-            value=20,
-            help="贝叶斯优化的尝试次数，通常20-30次即可找到好结果",
-            key="bo_n_trials"
-        )
-        
-        st.caption("💡 **智能决策**: 贝叶斯优化会根据历史结果自动选择最有希望的参数组合")
-        
-        # 显示预估消耗
-        estimated_calls = bo_n_trials * len(test_dataset) if test_dataset else 0
-        st.warning(f"💰 预计 API 调用：**{estimated_calls}** 次")
-        st.caption("⚠️ 遗传算法成本较高，建议先用小规模参数测试")
-    
-    st.markdown("---")
-    
-    # 开始搜索按钮
-    start_search_btn = st.button(
-        f"🚀 开始{'随机搜索' if algo_type == '🎲 随机搜索' else '遗传进化'}寻优",
-        type="primary",
-        use_container_width=True,
-        disabled=not (search_task_desc and test_dataset and len(test_dataset) >= 1),
-        key="start_search_btn"
-    )
-
-# 执行搜索（随机搜索或遗传算法）
-if start_search_btn:
-    if not api_key_input or api_key_input.strip() == "":
-        st.error("❌ 请先在侧边栏配置 API Key")
-    elif not search_task_desc or search_task_desc.strip() == "":
-        st.error("❌ 请输入任务描述")
-    elif not test_dataset or len(test_dataset) < 1:
-        st.error("❌ 请至少提供 1 条测试数据")
-    else:
-        try:
-            # 创建优化器
-            optimizer = PromptOptimizer(
-                api_key=api_key_input,
-                model=model_choice,
-                base_url=base_url if base_url else None,
-                provider=api_provider.lower()
-            )
+            # 应用场景
+            {"input": "计算机视觉技术在自动驾驶汽车中发挥着关键作用", "ground_truth": "Computer vision technology plays a key role in autonomous vehicles"},
+            {"input": "推荐系统利用协同过滤算法为用户提供个性化内容", "ground_truth": "Recommendation systems use collaborative filtering algorithms to provide personalized content for users"},
+            {"input": "语音识别系统已经达到了接近人类水平的准确率", "ground_truth": "Speech recognition systems have achieved accuracy rates close to human level"},
             
-            # 转换测试数据格式
-            import pandas as pd
-            if isinstance(test_dataset, pd.DataFrame):
-                test_data_list = test_dataset.to_dict('records')
-            elif isinstance(test_dataset, list):
-                test_data_list = test_dataset
-            else:
-                test_data_list = list(test_dataset)
+            # 复杂句式
+            {"input": "尽管深度学习取得了巨大成功，但其可解释性仍然是一个重要的研究课题", "ground_truth": "Although deep learning has achieved great success, its interpretability remains an important research topic"},
+            {"input": "研究人员正在探索如何将符号推理与神经网络相结合，以实现更强大的AI系统", "ground_truth": "Researchers are exploring how to combine symbolic reasoning with neural networks to achieve more powerful AI systems"},
             
-            # 阶段1: 生成搜索空间
-            with st.status("🧠 正在分析任务，生成搜索空间...", expanded=True) as status:
-                st.write("让 LLM 分析任务特点，生成可能的角色、风格和技巧组合...")
+            # 技术挑战
+            {"input": "数据隐私和算法偏见是人工智能应用中必须解决的重要问题", "ground_truth": "Data privacy and algorithmic bias are important issues that must be addressed in AI applications"},
+            {"input": "小样本学习旨在让模型能够从少量数据中快速学习新任务", "ground_truth": "Few-shot learning aims to enable models to quickly learn new tasks from limited data"},
+            
+            # 行业应用
+            {"input": "在医疗领域，AI辅助诊断系统可以帮助医生更准确地识别疾病", "ground_truth": "In the medical field, AI-assisted diagnosis systems can help doctors identify diseases more accurately"},
+            {"input": "金融科技公司利用机器学习算法进行风险评估和欺诈检测", "ground_truth": "Fintech companies use machine learning algorithms for risk assessment and fraud detection"},
+            
+            # 未来展望
+            {"input": "通用人工智能（AGI）的实现仍然是一个长期且充满挑战的目标", "ground_truth": "The achievement of Artificial General Intelligence (AGI) remains a long-term and challenging goal"},
+            {"input": "量子计算与人工智能的结合可能会带来革命性的突破", "ground_truth": "The combination of quantum computing and artificial intelligence may bring revolutionary breakthroughs"},
+            
+            # 伦理与监管
+            {"input": "建立AI伦理准则和监管框架对于确保技术的负责任发展至关重要", "ground_truth": "Establishing AI ethical guidelines and regulatory frameworks is crucial for ensuring responsible development of the technology"},
+            {"input": "随着AI系统变得越来越强大，我们需要认真思考其对社会的长远影响", "ground_truth": "As AI systems become increasingly powerful, we need to seriously consider their long-term impact on society"},
+            
+            # 教育与人才
+            {"input": "培养具备跨学科知识的AI人才是当前教育体系面临的重要任务", "ground_truth": "Cultivating AI talents with interdisciplinary knowledge is an important task facing the current education system"}]
+        # 处理上传的CSV文件或使用默认数据
+        if uploaded_file is not None:
+            try:
+                import pandas as pd
+                df = pd.read_csv(uploaded_file)
                 
-                search_space = optimizer.generate_search_space(
-                    task_description=search_task_desc,
-                    task_type=search_task_type
+                # 验证CSV格式
+                if 'input' not in df.columns or 'ground_truth' not in df.columns:
+                    st.error("❌ CSV文件必须包含 'input' 和 'ground_truth' 两列！")
+                    loaded_data = default_test_data
+                else:
+                    # 转换为字典列表
+                    loaded_data = df[['input', 'ground_truth']].to_dict('records')
+                    st.success(f"✅ 已从CSV加载 {len(loaded_data)} 条数据")
+            except Exception as e:
+                st.error(f"❌ 文件解析失败：{str(e)}")
+                loaded_data = default_test_data
+        else:
+            loaded_data = default_test_data
+        
+        # 使用 data_editor 让用户编辑测试数据
+        test_dataset = st.data_editor(
+            loaded_data,
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "input": st.column_config.TextColumn("测试输入", width="medium"),
+                "ground_truth": st.column_config.TextColumn("标准答案", width="medium")
+            },
+            key="search_test_dataset"
+        )
+
+    with search_col2:
+        st.subheader("⚙️ 搜索参数")
+        
+        # 根据算法类型显示不同参数
+        if algo_type == "🎲 随机搜索":
+            # 随机搜索参数
+            search_iterations = st.slider(
+                "搜索迭代次数",
+                min_value=3,
+                max_value=20,
+                value=5,
+                help="尝试多少种不同的 Prompt 组合",
+                key="search_iterations"
+            )
+            
+            # 显示预估消耗
+            estimated_calls = search_iterations * len(test_dataset) if test_dataset else 0
+            st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
+            
+        elif algo_type == "🧬 遗传算法":
+            # 遗传算法参数
+            ga_generations = st.slider(
+                "进化代数 (Generations)",
+                min_value=3,
+                max_value=10,
+                value=5,
+                help="种群进化的代数，越多效果越好但成本越高",
+                key="ga_generations"
+            )
+            
+            ga_population = st.slider(
+                "种群规模 (Population Size)",
+                min_value=4,
+                max_value=20,
+                value=8,
+                help="每一代有多少个个体，规模越大覆盖越全面",
+                key="ga_population"
+            )
+            
+            # 高级参数
+            with st.expander("🔧 高级参数", expanded=False):
+                ga_elite_ratio = st.slider(
+                    "精英保留比例",
+                    min_value=0.1,
+                    max_value=0.5,
+                    value=0.2,
+                    step=0.1,
+                    help="保留多少比例的优秀个体到下一代",
+                    key="ga_elite_ratio"
                 )
                 
-                st.success("✅ 搜索空间生成完成！")
-                
-                # 展示生成的变量池
-                space_col1, space_col2, space_col3 = st.columns(3)
-                with space_col1:
-                    st.markdown("**🎭 角色池**")
-                    for role in search_space.roles:
-                        st.write(f"• {role}")
-                with space_col2:
-                    st.markdown("**🎨 风格池**")
-                    for style in search_space.styles:
-                        st.write(f"• {style}")
-                with space_col3:
-                    st.markdown("**🔧 技巧池**")
-                    for tech in search_space.techniques:
-                        st.write(f"• {tech}")
-                
-                # 根据算法类型执行不同逻辑
-                if algo_type == "🎲 随机搜索":
-                    # === 随机搜索 ===
-                    status.update(label="🎲 正在执行随机搜索...", state="running")
-                    
-                    progress_bar = st.progress(0.0)
-                    progress_text = st.empty()
-                    
-                    def update_progress_random(current, total, message):
-                        progress = current / total
-                        progress_bar.progress(progress)
-                        progress_text.text(f"{message} ({current}/{total})")
-                    
-                    # 运行随机搜索
-                    all_results, best_result = optimizer.run_random_search(
-                        task_description=search_task_desc,
-                        task_type=search_task_type,
-                        test_dataset=test_data_list,
-                        search_space=search_space,
-                        iterations=search_iterations,
-                        progress_callback=update_progress_random
-                    )
-                    
-                    evolution_history = None  # 随机搜索无进化历史
-                    
-                elif algo_type == "🧬 遗传算法":
-                    # === 遗传算法 ===
-                    status.update(label="🧬 正在执行遗传算法进化...", state="running")
-                    
-                    progress_bar = st.progress(0.0)
-                    progress_text = st.empty()
-                    
-                    # 实时更新进化曲线
-                    chart_placeholder = st.empty()
-                    history_data = []
-                    
-                    def update_progress_ga(gen, total_gen, best_score, avg_score):
-                        """遗传算法进度回调"""
-                        progress = gen / total_gen
-                        progress_bar.progress(progress)
-                        progress_text.text(f"第 {gen}/{total_gen} 代：最佳 {best_score:.2f}, 平均 {avg_score:.2f}")
-                        
-                        # 更新进化曲线
-                        history_data.append({
-                            "代数": gen,
-                            "最高分": best_score,
-                            "平均分": avg_score
-                        })
-                        chart_df = pd.DataFrame(history_data)
-                        chart_placeholder.line_chart(chart_df.set_index("代数"))
-                    
-                    # 运行遗传算法
-                    all_results, best_result, evolution_history = optimizer.run_genetic_algorithm(
-                        task_description=search_task_desc,
-                        task_type=search_task_type,
-                        test_dataset=test_data_list,
-                        search_space=search_space,
-                        generations=ga_generations,
-                        population_size=ga_population,
-                        elite_ratio=ga_elite_ratio,
-                        mutation_rate=ga_mutation_rate,
-                        progress_callback=update_progress_ga
-                    )
-                
-                else:
-                    # === 贝叶斯优化 ===
-                    status.update(label="🧐 正在执行贝叶斯优化...", state="running")
-                    
-                    progress_bar = st.progress(0.0)
-                    progress_text = st.empty()
-                    
-                    # 实时更新分数曲线
-                    chart_placeholder = st.empty()
-                    trial_data = []
-                    
-                    def update_progress_bo(trial, total_trials, best_score):
-                        """贝叶斯优化进度回调"""
-                        progress = trial / total_trials
-                        progress_bar.progress(progress)
-                        progress_text.text(f"试验 {trial}/{total_trials}：当前最佳 {best_score:.2f}")
-                        
-                        # 更新分数曲线
-                        if len(trial_data) > 0:
-                            chart_df = pd.DataFrame(trial_data)
-                            chart_placeholder.line_chart(chart_df.set_index("试验次数")[["得分", "最佳得分"]])
-                    
-                    # 运行贝叶斯优化
-                    all_results, best_result, trial_history = optimizer.run_bayesian_optimization(
-                        task_description=search_task_desc,
-                        task_type=search_task_type,
-                        test_dataset=test_data_list,
-                        search_space=search_space,
-                        n_trials=bo_n_trials,
-                        progress_callback=update_progress_bo
-                    )
-                    
-                    # 转换历史数据用于展示
-                    trial_data = [{
-                        "试验次数": h['trial'],
-                        "得分": h['score'],
-                        "最佳得分": h['best_score']
-                    } for h in trial_history]
-                    evolution_history = trial_history  # 重用变量名用于后续展示
-                
-                status.update(label="✅ 优化完成！", state="complete")
+                ga_mutation_rate = st.slider(
+                    "变异概率",
+                    min_value=0.1,
+                    max_value=0.5,
+                    value=0.2,
+                    step=0.1,
+                    help="每个基因发生变异的概率",
+                    key="ga_mutation_rate"
+                )
             
-            # 阶段3: 展示结果
-            st.markdown("---")
-            st.header("🏆 优化结果")
+            # 显示预估消耗
+            estimated_calls = ga_generations * ga_population * len(test_dataset) if test_dataset else 0
+            st.info(f"💰 预计 API 调用：**{estimated_calls}** 次")
             
-            # 最佳结果高亮展示
-            if algo_type == "🧬 遗传算法" and evolution_history:
-                improvement = evolution_history[-1]['best_score'] - evolution_history[0]['best_score']
-                st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧬 进化增益：+{improvement:.2f} 分")
-            elif algo_type == "🧐 贝叶斯优化" and evolution_history:
-                best_trial_num = next(i for i, h in enumerate(trial_history, 1) if h['score'] == best_result.avg_score)
-                st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧐 在第 {best_trial_num} 次试验中找到")
-            else:
-                st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
-            
-            result_col1, result_col2 = st.columns([3, 2])
-            
-            with result_col1:
-                st.markdown("### 🎯 冠军 Prompt")
-                st.code(best_result.full_prompt, language="text")
-            
-            with result_col2:
-                st.markdown("### 📊 策略组成")
-                st.markdown(f"**🎭 角色：** {best_result.role}")
-                st.markdown(f"**🎨 风格：** {best_result.style}")
-                st.markdown(f"**🔧 技巧：** {best_result.technique}")
-                st.markdown(f"**💯 得分：** {best_result.avg_score:.2f}")
-                
-                if algo_type == "🧬 遗传算法" and evolution_history:
-                    st.markdown("---")
-                    st.markdown("**🧬 进化统计**")
-                    st.markdown(f"• 初始最高分: {evolution_history[0]['best_score']:.2f}")
-                    st.markdown(f"• 最终最高分: {evolution_history[-1]['best_score']:.2f}")
-                    st.markdown(f"• 进化提升: +{improvement:.2f} 分")
-            
-            # 所有结果排行榜
-            st.markdown("---")
-            st.subheader("📋 完整优化记录")
-            
-            # 构建结果表格
-            results_df = pd.DataFrame([
-                {
-                    "排名": i + 1,
-                    "ID": r.iteration_id,
-                    "角色": r.role,
-                    "风格": r.style,
-                    "技巧": r.technique,
-                    "得分": f"{r.avg_score:.2f}"
-                }
-                for i, r in enumerate(sorted(all_results, key=lambda x: x.avg_score, reverse=True))
-            ])
-            
-            st.dataframe(
-                results_df,
-                use_container_width=True,
-                hide_index=True
+        else:  # 贝叶斯优化
+            # 贝叶斯优化参数
+            bo_n_trials = st.slider(
+                "尝试次数 (Trials)",
+                min_value=10,
+                max_value=50,
+                value=20,
+                help="贝叶斯优化的尝试次数，通常20-30次即可找到好结果",
+                key="bo_n_trials"
             )
             
-            # 可视化
-            st.markdown("---")
+            st.caption("💡 **智能决策**: 贝叶斯优化会根据历史结果自动选择最有希望的参数组合")
             
-            if algo_type == "🧬 遗传算法" and evolution_history:
-                # 遗传算法：显示进化曲线
-                st.subheader("📈 进化曲线")
+            # 显示预估消耗
+            estimated_calls = bo_n_trials * len(test_dataset) if test_dataset else 0
+            st.warning(f"💰 预计 API 调用：**{estimated_calls}** 次")
+            st.caption("⚠️ 遗传算法成本较高，建议先用小规模参数测试")
+        
+        st.markdown("---")
+        
+        # 开始搜索按钮
+        start_search_btn = st.button(
+            f"🚀 开始{'随机搜索' if algo_type == '🎲 随机搜索' else '遗传进化'}寻优",
+            type="primary",
+            use_container_width=True,
+            disabled=not (search_task_desc and test_dataset and len(test_dataset) >= 1),
+            key="start_search_btn"
+        )
+
+    # 执行搜索（随机搜索或遗传算法）
+    if start_search_btn:
+        if not api_key_input or api_key_input.strip() == "":
+            st.error("❌ 请先在侧边栏配置 API Key")
+        elif not search_task_desc or search_task_desc.strip() == "":
+            st.error("❌ 请输入任务描述")
+        elif not test_dataset or len(test_dataset) < 1:
+            st.error("❌ 请至少提供 1 条测试数据")
+        else:
+            try:
+                # 创建优化器
+                optimizer = PromptOptimizer(
+                    api_key=api_key_input,
+                    model=model_choice,
+                    base_url=base_url if base_url else None,
+                    provider=api_provider.lower()
+                )
                 
-                import matplotlib.pyplot as plt
-                import matplotlib
-                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-                matplotlib.rcParams['axes.unicode_minus'] = False
+                # 转换测试数据格式
+                import pandas as pd
+                if isinstance(test_dataset, pd.DataFrame):
+                    test_data_list = test_dataset.to_dict('records')
+                elif isinstance(test_dataset, list):
+                    test_data_list = test_dataset
+                else:
+                    test_data_list = list(test_dataset)
                 
-                fig, ax = plt.subplots(figsize=(10, 5))
+                # 阶段1: 生成搜索空间
+                with st.status("🧠 正在分析任务，生成搜索空间...", expanded=True) as status:
+                    st.write("让 LLM 分析任务特点，生成可能的角色、风格和技巧组合...")
+                    
+                    search_space = optimizer.generate_search_space(
+                        task_description=search_task_desc,
+                        task_type=search_task_type
+                    )
+                    
+                    st.success("✅ 搜索空间生成完成！")
+                    
+                    # 展示生成的变量池
+                    space_col1, space_col2, space_col3 = st.columns(3)
+                    with space_col1:
+                        st.markdown("**🎭 角色池**")
+                        for role in search_space.roles:
+                            st.write(f"• {role}")
+                    with space_col2:
+                        st.markdown("**🎨 风格池**")
+                        for style in search_space.styles:
+                            st.write(f"• {style}")
+                    with space_col3:
+                        st.markdown("**🔧 技巧池**")
+                        for tech in search_space.techniques:
+                            st.write(f"• {tech}")
+                    
+                    # 根据算法类型执行不同逻辑
+                    if algo_type == "🎲 随机搜索":
+                        # === 随机搜索 ===
+                        status.update(label="🎲 正在执行随机搜索...", state="running")
+                        
+                        progress_bar = st.progress(0.0)
+                        progress_text = st.empty()
+                        
+                        def update_progress_random(current, total, message):
+                            progress = current / total
+                            progress_bar.progress(progress)
+                            progress_text.text(f"{message} ({current}/{total})")
+                        
+                        # 运行随机搜索
+                        all_results, best_result = optimizer.run_random_search(
+                            task_description=search_task_desc,
+                            task_type=search_task_type,
+                            test_dataset=test_data_list,
+                            search_space=search_space,
+                            iterations=search_iterations,
+                            progress_callback=update_progress_random
+                        )
+                        
+                        evolution_history = None  # 随机搜索无进化历史
+                        
+                    elif algo_type == "🧬 遗传算法":
+                        # === 遗传算法 ===
+                        status.update(label="🧬 正在执行遗传算法进化...", state="running")
+                        
+                        progress_bar = st.progress(0.0)
+                        progress_text = st.empty()
+                        
+                        # 实时更新进化曲线
+                        chart_placeholder = st.empty()
+                        history_data = []
+                        
+                        def update_progress_ga(gen, total_gen, best_score, avg_score):
+                            """遗传算法进度回调"""
+                            progress = gen / total_gen
+                            progress_bar.progress(progress)
+                            progress_text.text(f"第 {gen}/{total_gen} 代：最佳 {best_score:.2f}, 平均 {avg_score:.2f}")
+                            
+                            # 更新进化曲线
+                            history_data.append({
+                                "代数": gen,
+                                "最高分": best_score,
+                                "平均分": avg_score
+                            })
+                            chart_df = pd.DataFrame(history_data)
+                            chart_placeholder.line_chart(chart_df.set_index("代数"))
+                        
+                        # 运行遗传算法
+                        all_results, best_result, evolution_history = optimizer.run_genetic_algorithm(
+                            task_description=search_task_desc,
+                            task_type=search_task_type,
+                            test_dataset=test_data_list,
+                            search_space=search_space,
+                            generations=ga_generations,
+                            population_size=ga_population,
+                            elite_ratio=ga_elite_ratio,
+                            mutation_rate=ga_mutation_rate,
+                            progress_callback=update_progress_ga
+                        )
+                    
+                    else:
+                        # === 贝叶斯优化 ===
+                        status.update(label="🧐 正在执行贝叶斯优化...", state="running")
+                        
+                        progress_bar = st.progress(0.0)
+                        progress_text = st.empty()
+                        
+                        # 实时更新分数曲线
+                        chart_placeholder = st.empty()
+                        trial_data = []
+                        
+                        def update_progress_bo(trial, total_trials, best_score):
+                            """贝叶斯优化进度回调"""
+                            progress = trial / total_trials
+                            progress_bar.progress(progress)
+                            progress_text.text(f"试验 {trial}/{total_trials}：当前最佳 {best_score:.2f}")
+                            
+                            # 更新分数曲线
+                            if len(trial_data) > 0:
+                                chart_df = pd.DataFrame(trial_data)
+                                chart_placeholder.line_chart(chart_df.set_index("试验次数")[["得分", "最佳得分"]])
+                        
+                        # 运行贝叶斯优化
+                        all_results, best_result, trial_history = optimizer.run_bayesian_optimization(
+                            task_description=search_task_desc,
+                            task_type=search_task_type,
+                            test_dataset=test_data_list,
+                            search_space=search_space,
+                            n_trials=bo_n_trials,
+                            progress_callback=update_progress_bo
+                        )
+                        
+                        # 转换历史数据用于展示
+                        trial_data = [{
+                            "试验次数": h['trial'],
+                            "得分": h['score'],
+                            "最佳得分": h['best_score']
+                        } for h in trial_history]
+                        evolution_history = trial_history  # 重用变量名用于后续展示
+                    
+                    status.update(label="✅ 优化完成！", state="complete")
                 
-                generations = [h['generation'] for h in evolution_history]
-                best_scores = [h['best_score'] for h in evolution_history]
-                avg_scores = [h['avg_score'] for h in evolution_history]
-                worst_scores = [h['worst_score'] for h in evolution_history]
+                # 阶段3: 展示结果
+                st.markdown("---")
+                st.header("🏆 优化结果")
                 
-                ax.plot(generations, best_scores, marker='o', linewidth=2, markersize=8, label='最高分', color='#2ecc71')
-                ax.plot(generations, avg_scores, marker='s', linewidth=2, markersize=6, label='平均分', color='#3498db')
-                ax.plot(generations, worst_scores, marker='^', linewidth=1, markersize=5, label='最低分', color='#e74c3c', alpha=0.5)
+                # 最佳结果高亮展示
+                if algo_type == "🧬 遗传算法" and evolution_history:
+                    improvement = evolution_history[-1]['best_score'] - evolution_history[0]['best_score']
+                    st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧬 进化增益：+{improvement:.2f} 分")
+                elif algo_type == "🧐 贝叶斯优化" and evolution_history:
+                    best_trial_num = next(i for i, h in enumerate(trial_history, 1) if h['score'] == best_result.avg_score)
+                    st.success(f"🥇 **最终得分：{best_result.avg_score:.2f}** | 🧐 在第 {best_trial_num} 次试验中找到")
+                else:
+                    st.success(f"🥇 **最佳得分：{best_result.avg_score:.2f}**")
                 
-                ax.fill_between(generations, worst_scores, best_scores, alpha=0.2, color='#3498db')
+                result_col1, result_col2 = st.columns([3, 2])
                 
-                ax.set_xlabel('代数 (Generation)')
-                ax.set_ylabel('得分 (Score)')
-                ax.set_title('遗传算法进化曲线 - 可以看到得分持续上升！')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                with result_col1:
+                    st.markdown("### 🎯 冠军 Prompt")
+                    st.code(best_result.full_prompt, language="text")
                 
-                st.pyplot(fig)
+                with result_col2:
+                    st.markdown("### 📊 策略组成")
+                    st.markdown(f"**🎭 角色：** {best_result.role}")
+                    st.markdown(f"**🎨 风格：** {best_result.style}")
+                    st.markdown(f"**🔧 技巧：** {best_result.technique}")
+                    st.markdown(f"**💯 得分：** {best_result.avg_score:.2f}")
+                    
+                    if algo_type == "🧬 遗传算法" and evolution_history:
+                        st.markdown("---")
+                        st.markdown("**🧬 进化统计**")
+                        st.markdown(f"• 初始最高分: {evolution_history[0]['best_score']:.2f}")
+                        st.markdown(f"• 最终最高分: {evolution_history[-1]['best_score']:.2f}")
+                        st.markdown(f"• 进化提升: +{improvement:.2f} 分")
                 
-                # 进化数据表
-                with st.expander("📊 查看详细进化数据", expanded=False):
-                    evo_df = pd.DataFrame(evolution_history)
-                    evo_df.columns = ['代数', '最高分', '平均分', '最低分']
-                    st.dataframe(evo_df, use_container_width=True, hide_index=True)
+                # 所有结果排行榜
+                st.markdown("---")
+                st.subheader("📋 完整优化记录")
                 
-            else:
-                # 随机搜索：显示得分分布
-                st.subheader("📈 得分分布图")
+                # 构建结果表格
+                results_df = pd.DataFrame([
+                    {
+                        "排名": i + 1,
+                        "ID": r.iteration_id,
+                        "角色": r.role,
+                        "风格": r.style,
+                        "技巧": r.technique,
+                        "得分": f"{r.avg_score:.2f}"
+                    }
+                    for i, r in enumerate(sorted(all_results, key=lambda x: x.avg_score, reverse=True))
+                ])
                 
-                import matplotlib.pyplot as plt
-                import matplotlib
-                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-                matplotlib.rcParams['axes.unicode_minus'] = False
+                st.dataframe(
+                    results_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
                 
-                fig, ax = plt.subplots(figsize=(10, 4))
-                scores = [r.avg_score for r in all_results]
-                iterations = [r.iteration_id for r in all_results]
+                # 可视化
+                st.markdown("---")
                 
-                ax.plot(iterations, scores, marker='o', linewidth=2, markersize=8, color='#3498db')
-                ax.axhline(y=best_result.avg_score, color='r', linestyle='--', linewidth=2, label=f'最佳得分: {best_result.avg_score:.2f}')
-                ax.set_xlabel('迭代次数')
-                ax.set_ylabel('得分')
-                ax.set_title('随机搜索得分变化 - 随机波动，无规律')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                if algo_type == "🧬 遗传算法" and evolution_history:
+                    # 遗传算法：显示进化曲线
+                    st.subheader("📈 进化曲线")
+                    
+                    import matplotlib.pyplot as plt
+                    import matplotlib
+                    matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+                    matplotlib.rcParams['axes.unicode_minus'] = False
+                    
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    
+                    generations = [h['generation'] for h in evolution_history]
+                    best_scores = [h['best_score'] for h in evolution_history]
+                    avg_scores = [h['avg_score'] for h in evolution_history]
+                    worst_scores = [h['worst_score'] for h in evolution_history]
+                    
+                    ax.plot(generations, best_scores, marker='o', linewidth=2, markersize=8, label='最高分', color='#2ecc71')
+                    ax.plot(generations, avg_scores, marker='s', linewidth=2, markersize=6, label='平均分', color='#3498db')
+                    ax.plot(generations, worst_scores, marker='^', linewidth=1, markersize=5, label='最低分', color='#e74c3c', alpha=0.5)
+                    
+                    ax.fill_between(generations, worst_scores, best_scores, alpha=0.2, color='#3498db')
+                    
+                    ax.set_xlabel('代数 (Generation)')
+                    ax.set_ylabel('得分 (Score)')
+                    ax.set_title('遗传算法进化曲线 - 可以看到得分持续上升！')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+                    
+                    st.pyplot(fig)
+                    
+                    # 进化数据表
+                    with st.expander("📊 查看详细进化数据", expanded=False):
+                        evo_df = pd.DataFrame(evolution_history)
+                        evo_df.columns = ['代数', '最高分', '平均分', '最低分']
+                        st.dataframe(evo_df, use_container_width=True, hide_index=True)
+                    
+                else:
+                    # 随机搜索：显示得分分布
+                    st.subheader("📈 得分分布图")
+                    
+                    import matplotlib.pyplot as plt
+                    import matplotlib
+                    matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+                    matplotlib.rcParams['axes.unicode_minus'] = False
+                    
+                    fig, ax = plt.subplots(figsize=(10, 4))
+                    scores = [r.avg_score for r in all_results]
+                    iterations = [r.iteration_id for r in all_results]
+                    
+                    ax.plot(iterations, scores, marker='o', linewidth=2, markersize=8, color='#3498db')
+                    ax.axhline(y=best_result.avg_score, color='r', linestyle='--', linewidth=2, label=f'最佳得分: {best_result.avg_score:.2f}')
+                    ax.set_xlabel('迭代次数')
+                    ax.set_ylabel('得分')
+                    ax.set_title('随机搜索得分变化 - 随机波动，无规律')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+                    
+                    st.pyplot(fig)
                 
-                st.pyplot(fig)
-            
-            # 保存最佳结果到 session_state
-            st.session_state.best_search_result = best_result
-            
-            # 显示完成消息
-            algo_name = {"🎲 随机搜索": "随机搜索", "🧬 遗传算法": "遗传算法", "🧐 贝叶斯优化": "贝叶斯优化"}[algo_type]
-            st.success(f"✅ {algo_name}优化完成！您可以将冠军 Prompt 复制使用。")
-            
-            if algo_type == "🎲 随机搜索":
-                st.info("💡 **提示**: 如果想进一步提升，可以切换到「🧬 遗传算法」进行深度优化！")
-            
-        except Exception as e:
-            st.error(f"❌ 优化过程出错：{str(e)}")
-            import traceback
-            with st.expander("查看错误详情"):
-                st.code(traceback.format_exc())
+                # 保存最佳结果到 session_state
+                st.session_state.best_search_result = best_result
+                
+                # 显示完成消息
+                algo_name = {"🎲 随机搜索": "随机搜索", "🧬 遗传算法": "遗传算法", "🧐 贝叶斯优化": "贝叶斯优化"}[algo_type]
+                st.success(f"✅ {algo_name}优化完成！您可以将冠军 Prompt 复制使用。")
+                
+                if algo_type == "🎲 随机搜索":
+                    st.info("💡 **提示**: 如果想进一步提升，可以切换到「🧬 遗传算法」进行深度优化！")
+                
+            except Exception as e:
+                st.error(f"❌ 优化过程出错：{str(e)}")
+                import traceback
+                with st.expander("查看错误详情"):
+                    st.code(traceback.format_exc())
 
 col_foot1, col_foot2, col_foot3 = st.columns(3)
 

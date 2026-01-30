@@ -4,6 +4,7 @@ Prompt 优化核心模块
 """
 import os
 import time
+import re
 from typing import Optional, Literal
 from langchain_openai import ChatOpenAI
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -20,6 +21,60 @@ try:
 except ImportError:
     OPTUNA_AVAILABLE = False
     print("⚠️ Optuna 未安装，贝叶斯优化功能不可用。运行: pip install optuna")
+
+
+def safe_json_loads(content: str) -> dict:
+    """
+    安全地解析JSON字符串，处理控制字符问题
+    
+    Args:
+        content: JSON字符串
+        
+    Returns:
+        解析后的字典
+        
+    Raises:
+        JSONDecodeError: 如果所有尝试都失败
+    """
+    try:
+        # 尝试直接解析
+        return json.loads(content)
+    except json.JSONDecodeError as json_err:
+        print(f"⚠️ JSON解析失败，尝试清理控制字符: {str(json_err)}")
+        
+        # 尝试使用 strict=False 参数（允许某些控制字符）
+        try:
+            result = json.loads(content, strict=False)
+            print("✅ 使用 strict=False 解析成功")
+            return result
+        except:
+            pass
+        
+        # 尝试手动清理控制字符
+        try:
+            print("⚠️ 尝试手动清理JSON内容")
+            # 替换未转义的控制字符
+            cleaned_content = content.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+            # 但是JSON结构本身的换行需要保留，所以这个方法可能不完美
+            # 更好的方法是只清理字符串值内的控制字符
+            result = json.loads(cleaned_content)
+            print("✅ 清理后解析成功")
+            return result
+        except:
+            pass
+        
+        # 如果上面都失败了，尝试更激进的清理
+        try:
+            print("⚠️ 尝试使用正则表达式清理")
+            # 移除所有ASCII控制字符，除了空格、换行、制表符（JSON结构需要）
+            cleaned_content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]', '', content)
+            result = json.loads(cleaned_content)
+            print("✅ 正则清理后解析成功")
+            return result
+        except Exception as final_err:
+            print(f"❌ 所有JSON解析尝试均失败")
+            print(f"原始内容前500字符: {content[:500]}")
+            raise json_err  # 抛出原始错误
 
 
 class OptimizedPrompt(BaseModel):
@@ -40,6 +95,8 @@ class ClassificationPrompt(BaseModel):
     reasoning_guidance: str = Field(description="思维链引导语，帮助模型逐步分析")
     output_format: str = Field(description="严格的输出格式要求")
     final_prompt: str = Field(description="组合好的最终可用的完整 Prompt")
+    enhancement_techniques: list[str] = Field(description="使用的优化技术列表", default=[])
+    enhancement_techniques: list[str] = Field(description="使用的优化技术列表", default=[])
 
 class SummarizationPrompt(BaseModel):
     """优化后的摘要任务 Prompt 结构"""
@@ -217,7 +274,7 @@ class PromptOptimizer:
                 content = content.split("```")[1].split("```")[0].strip()
             
             print("⚙️ 正在解析 JSON...")
-            result_dict = json.loads(content)
+            result_dict = safe_json_loads(content)
             
             print("✅ JSON 解析成功")
             print("🔨 正在验证数据结构...")
@@ -310,9 +367,11 @@ class PromptOptimizer:
    - 对于复杂分类任务，使用 "Let's think step by step"
 
 4. **格式锁定 (Output Format)**
-   - 明确要求模型只输出特定格式（如 JSON）
-   - 禁止模型输出多余的解释或废话
+   - **关键要求**：模型必须**只输出标签名称本身**，不要输出JSON格式、不要加引号、不要解释
+   - 例如：如果标签是"积极"，就只输出：积极
+   - **禁止**输出：{{"label": "积极"}} 或 "积极" 或 标签：积极 等格式
    - 确保输出可以被代码轻松解析
+   - 在 Prompt 末尾明确强调："请只输出标签名称，不要输出其他任何内容"
 
 5. **角色设定**
    - 为分类器设定一个专业的角色身份
@@ -333,13 +392,13 @@ class PromptOptimizer:
 - final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的分类 Prompt
 - **必须在 Prompt 中明确标注待分类文本的位置**，使用以下任一占位符格式：
   * [待分类文本] （推荐）
-  * {{text}} （两个花括号）
+  * {{{{text}}}} （两个花括号）
   * [输入评论]
   * [待处理文本]
 - 占位符应该放在合理的位置，比如：
   * "评论内容：[待分类文本]"
   * "请分析以下文本：[待分类文本]"
-  * "文本：{{text}}"
+  * "文本：{{{{text}}}}"
 - **不要**只说"分析这个评论"或"判断情感"而不提供具体的插入位置
 - final_prompt 必须是可以通过简单的字符串替换就能使用的模板
 
@@ -350,7 +409,8 @@ class PromptOptimizer:
 示例：...
 现在请分析以下评论的情感倾向：
 [待分类文本]
-请输出标签名称即可。
+
+**重要**：请只输出标签名称（如：积极、消极、中立），不要输出JSON格式，不要加任何解释。
 ```
 
 **示例错误格式（不要生成这样的）**：
@@ -359,6 +419,7 @@ class PromptOptimizer:
 标签定义：...
 示例：...
 让我们分析评论的情感倾向。（❌ 缺少明确的文本插入位置）
+输出格式：{{"label": "标签名"}}（❌ 不要要求JSON格式，应该直接输出标签）
 ```
 """
         
@@ -393,6 +454,7 @@ class PromptOptimizer:
             # 解析结果
             content = response.content
             print(f"📥 收到响应，长度: {len(content)} 字符")
+            print(f"📑 响应前200字符: {content[:200]}...")
             
             # 提取 JSON
             if "```json" in content:
@@ -403,9 +465,11 @@ class PromptOptimizer:
                 content = content.split("```")[1].split("```")[0].strip()
             
             print("⚙️ 正在解析 JSON...")
-            result_dict = json.loads(content)
+            print(f"📑 清理后的JSON前300字符: {content[:300]}...")
+            result_dict = safe_json_loads(content)
             
             print("✅ JSON 解析成功")
+            print(f"🔑 解析得到的字段: {list(result_dict.keys())}")
             print("🔨 正在验证数据结构...")
             optimized = ClassificationPrompt(**result_dict)
             
@@ -422,6 +486,14 @@ class PromptOptimizer:
             error_msg = str(e)
             print(f"🐛 错误类型: {type(e).__name__}")
             print(f"📝 错误详情: {error_msg[:500]}")
+            
+            # 如果是Pydantic验证错误，显示更详细的信息
+            if hasattr(e, 'errors'):
+                print(f"\n🔴 Pydantic 验证错误详情:")
+                for err in e.errors():
+                    print(f"  - 字段: {err.get('loc', 'unknown')}")
+                    print(f"    错误: {err.get('msg', 'unknown')}")
+                    print(f"    类型: {err.get('type', 'unknown')}")
             
             import traceback
             print(f"\n📄 完整堆栈信息：")
@@ -527,8 +599,9 @@ class PromptOptimizer:
 
 **重要**：
 - final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的摘要 Prompt
-- 其中待摘要的文本用 {{{{text}}}} 占位符表示
+- 其中待摘要的文本用双花括号包裹的text占位符表示
 - 所有规则和约束都要整合进 final_prompt 中
+- 确保JSON格式正确，字符串中的换行符需要正确转义
 """
         
         prompt_template = ChatPromptTemplate.from_messages([
@@ -558,6 +631,7 @@ class PromptOptimizer:
             # 解析结果
             content = response.content
             print(f"📥 收到响应，长度: {len(content)} 字符")
+            print(f"📑 响应前200字符: {content[:200]}...")
             
             # 提取 JSON
             if "```json" in content:
@@ -568,9 +642,11 @@ class PromptOptimizer:
                 content = content.split("```")[1].split("```")[0].strip()
             
             print("⚙️ 正在解析 JSON...")
-            result_dict = json.loads(content)
+            print(f"📑 清理后的JSON前300字符: {content[:300]}...")
+            result_dict = safe_json_loads(content)
             
             print("✅ JSON 解析成功")
+            print(f"🔑 解析得到的字段: {list(result_dict.keys())}")
             print("🔨 正在验证数据结构...")
             optimized = SummarizationPrompt(**result_dict)
             
@@ -587,6 +663,14 @@ class PromptOptimizer:
             error_msg = str(e)
             print(f"🐛 错误类型: {type(e).__name__}")
             print(f"📝 错误详情: {error_msg[:500]}")
+            
+            # 如果是Pydantic验证错误，显示更详细的信息
+            if hasattr(e, 'errors'):
+                print(f"\n🔴 Pydantic 验证错误详情:")
+                for err in e.errors():
+                    print(f"  - 字段: {err.get('loc', 'unknown')}")
+                    print(f"    错误: {err.get('msg', 'unknown')}")
+                    print(f"    类型: {err.get('type', 'unknown')}")
             
             import traceback
             print(f"\n📄 完整堆栈信息：")
@@ -711,9 +795,10 @@ class PromptOptimizer:
 
 **重要**：
 - final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的翻译 Prompt
-- 其中待翻译的文本用 {{{{text}}}} 占位符表示
+- 其中待翻译的文本用双花括号包裹的text占位符表示
 - 所有规则、术语表、风格指南都要整合进 final_prompt 中
 - 务必体现"领域专家 + 术语锁定 + 三步翻译法"的核心策略
+- 确保JSON格式正确，字符串中的换行符需要正确转义
 """
         
         prompt_template = ChatPromptTemplate.from_messages([
@@ -743,6 +828,7 @@ class PromptOptimizer:
             # 解析结果
             content = response.content
             print(f"📥 收到响应，长度: {len(content)} 字符")
+            print(f"📑 响应前200字符: {content[:200]}...")
             
             # 提取 JSON
             if "```json" in content:
@@ -753,9 +839,11 @@ class PromptOptimizer:
                 content = content.split("```")[1].split("```")[0].strip()
             
             print("⚙️ 正在解析 JSON...")
-            result_dict = json.loads(content)
+            print(f"📑 清理后的JSON前300字符: {content[:300]}...")
+            result_dict = safe_json_loads(content)
             
             print("✅ JSON 解析成功")
+            print(f"🔑 解析得到的字段: {list(result_dict.keys())}")
             print("🔨 正在验证数据结构...")
             optimized = TranslationPrompt(**result_dict)
             
@@ -772,6 +860,14 @@ class PromptOptimizer:
             error_msg = str(e)
             print(f"🐛 错误类型: {type(e).__name__}")
             print(f"📝 错误详情: {error_msg[:500]}")
+            
+            # 如果是Pydantic验证错误，显示更详细的信息
+            if hasattr(e, 'errors'):
+                print(f"\n🔴 Pydantic 验证错误详情:")
+                for err in e.errors():
+                    print(f"  - 字段: {err.get('loc', 'unknown')}")
+                    print(f"    错误: {err.get('msg', 'unknown')}")
+                    print(f"    类型: {err.get('type', 'unknown')}")
             
             import traceback
             print(f"\n📄 完整堆栈信息：")
@@ -1338,7 +1434,7 @@ class PromptOptimizer:
 
 **重要：你必须只输出分类标签（如：积极、消极、中立），不要输出任何解释、分析或其他内容。**
 
-输入：{{{{text}}}}
+输入：{{text}}
 输出（只输出标签）："""
             else:
                 # 其他任务：常规格式
@@ -1349,7 +1445,7 @@ class PromptOptimizer:
 
 策略提示：{technique}
 
-输入：{{{{text}}}}
+输入：{{text}}
 """
             
             individual["full_prompt"] = prompt_template
@@ -1666,7 +1762,7 @@ class PromptOptimizer:
 
 **重要：你必须只输出分类标签（如：积极、消极、中立），不要输出任何解释、分析或其他内容。**
 
-输入：{{{{text}}}}
+输入：{{text}}
 输出（只输出标签）："""
             else:
                 prompt_template = f"""你是一位{role}。
@@ -1676,7 +1772,7 @@ class PromptOptimizer:
 
 策略提示：{technique}
 
-输入：{{{{text}}}}
+输入：{{text}}
 """
             
             # 在测试集上评估
