@@ -185,7 +185,7 @@ with st.sidebar:
         models_in_category = NVIDIA_MODELS[selected_category]
         
         # 设置默认模型
-        default_model = "qwen/qwen2.5-7b-instruct"
+        default_model = "qwen/qwen3-235b-a22b"
         default_model_index = 0
         if default_model in models_in_category:
             default_model_index = models_in_category.index(default_model)
@@ -233,19 +233,6 @@ with st.sidebar:
             ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
             index=0,
             help="推荐使用 GPT-4o 以获得最佳优化效果"
-        )
-    
-    # 优化模式（仅生成任务显示）
-    if task_type == "生成任务":
-        optimization_mode = st.selectbox(
-            "🎯 优化模式",
-            [
-                "通用增强 (General)",
-                "代码生成 (Coding)",
-                "创意写作 (Creative)",
-                "学术分析 (Academic)"
-            ],
-            help="根据任务类型选择合适的优化策略"
         )
     
     st.divider()
@@ -327,6 +314,19 @@ if task_type == "生成任务":
             placeholder="例如：推荐一下索尼降噪耳机",
             help="描述您想做什么，可以很简单。",
             key="gen_user_input"
+        )
+        
+       
+        optimization_mode = st.selectbox(
+            "🎯 优化模式",
+            [
+                "通用增强 (General)",
+                "代码生成 (Coding)",
+                "创意写作 (Creative)",
+                "学术分析 (Academic)"
+            ],
+            help="根据任务类型选择合适的优化策略。代码生成侧重步骤化和示例；创意写作强调个性化；学术分析注重逻辑性。",
+            key="gen_optimization_mode"
         )
         
         scene_input = st.text_input(
@@ -472,32 +472,31 @@ if st.session_state.result:
     col_test1, col_test2, col_test3 = st.columns([2, 1, 2])
     
     with col_test2:
-        if st.button("🚀 运行对比测试", type="primary", use_container_width=True):
-            if not st.session_state.comparison_done:
-                # 检查是否有保存的原始prompt
-                if 'original_user_input' not in st.session_state or not st.session_state.original_user_input:
-                    st.error("❌ 未找到原始 Prompt，请先运行一次优化。")
-                else:
-                    with st.spinner("⏳ 正在运行两个版本的 Prompt，请稍候..."):
-                        try:
-                            optimizer = PromptOptimizer(
-                                api_key=api_key_input,
-                                model=model_choice,
-                                base_url=base_url if base_url else None,
-                                provider=api_provider.lower()
-                            )
-                            
-                            # 使用保存的原始prompt
-                            res_orig, res_opt = optimizer.compare_results(
-                                original_prompt=st.session_state.original_user_input,
-                                optimized_prompt=result.improved_prompt
-                            )
-                            
-                            st.session_state.comparison_results = (res_orig, res_opt)
-                            st.session_state.comparison_done = True
-                            
-                        except Exception as e:
-                            st.error(f"❌ 对比测试失败：{str(e)}")
+        if st.button("🚀 运行对比测试", type="primary", use_container_width=True, key="ab_test_btn"):
+            # 检查是否有保存的原始prompt
+            if 'original_user_input' not in st.session_state or not st.session_state.original_user_input:
+                st.error("❌ 未找到原始 Prompt，请先运行一次优化。")
+            else:
+                with st.spinner("⏳ 正在运行两个版本的 Prompt，请稍候..."):
+                    try:
+                        optimizer = PromptOptimizer(
+                            api_key=api_key_input,
+                            model=model_choice,
+                            base_url=base_url if base_url else None,
+                            provider=api_provider.lower()
+                        )
+                        
+                        # 使用保存的原始prompt
+                        res_orig, res_opt = optimizer.compare_results(
+                            original_prompt=st.session_state.original_user_input,
+                            optimized_prompt=result.improved_prompt
+                        )
+                        
+                        st.session_state.comparison_results = (res_orig, res_opt)
+                        st.session_state.comparison_done = True
+                        
+                    except Exception as e:
+                        st.error(f"❌ 对比测试失败：{str(e)}")
     
     # 显示对比结果
     if st.session_state.comparison_done and st.session_state.comparison_results:
