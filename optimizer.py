@@ -23,12 +23,111 @@ except ImportError:
     print("⚠️ Optuna 未安装，贝叶斯优化功能不可用。运行: pip install optuna")
 
 
-def safe_json_loads(content: str) -> dict:
+def check_unescaped_braces(template: str, template_name: str = "模板") -> None:
     """
-    安全地解析JSON字符串，处理控制字符问题
+    检查模板字符串中是否存在未转义的花括号（会导致 format_messages KeyError）
     
     Args:
-        content: JSON字符串
+        template: 要检查的模板字符串
+        template_name: 模板名称（用于错误提示）
+    
+    Raises:
+        ValueError: 如果检测到可疑的未转义花括号
+    """
+    # 检测单个花括号（可能是未转义的）
+    # 排除已经转义的 {{ 和 }}，以及合法的占位符如 {scene_desc}
+    
+    # 查找所有花括号
+    single_open = re.findall(r'(?<!\{)\{(?!\{)', template)
+    single_close = re.findall(r'(?<!\})\}(?!\})', template)
+    
+    # 查找合法的占位符（如 {scene_desc}, {template_name} 等）
+    valid_placeholders = re.findall(r'\{[a-zA-Z_][a-zA-Z0-9_]*\}', template)
+    
+    # 如果单花括号数量不等于合法占位符数量，说明有问题
+    suspicious_count = len(single_open) - len(valid_placeholders)
+    
+    if suspicious_count > 0:
+        print(f"⚠️ 警告：{template_name} 中检测到 {suspicious_count} 个可疑的未转义花括号")
+        print(f"   这可能会导致 format_messages() 时出现 KeyError")
+        print(f"   合法占位符: {valid_placeholders}")
+        print(f"   如果模板中包含示例JSON或其他需要显示花括号的内容，请使用 {{{{ 和 }}}} 进行转义")
+
+
+def parse_markdown_response(content: str) -> dict:
+    """
+    解析Markdown格式的响应（当模型返回 **字段名**: 而不是JSON时）
+    
+    Args:
+        content: Markdown格式的响应
+        
+    Returns:
+        解析后的字典
+    """
+    print("🔍 尝试从Markdown格式中提取字段...")
+    
+    result = {}
+    
+    # 提取 thinking_process
+    thinking_match = re.search(r'\*\*thinking_process\*\*[：:]\s*(.*?)(?=\n\*\*|$)', content, re.DOTALL)
+    if thinking_match:
+        result['thinking_process'] = thinking_match.group(1).strip()
+    
+    # 提取 improved_prompt
+    improved_match = re.search(r'\*\*improved_prompt\*\*[：:]\s*(.*?)(?=\n\*\*|$)', content, re.DOTALL)
+    if improved_match:
+        result['improved_prompt'] = improved_match.group(1).strip()
+    
+    # 提取 enhancement_techniques（列表形式）
+    techniques_match = re.search(r'\*\*enhancement_techniques\*\*[：:]\s*(.*?)(?=\n\*\*|$)', content, re.DOTALL)
+    if techniques_match:
+        techniques_text = techniques_match.group(1).strip()
+        # 解析列表项（以 - 开头）
+        techniques = re.findall(r'-\s*([^\n]+)', techniques_text)
+        if techniques:
+            # 清理每个技术项，去除括号中的英文说明
+            result['enhancement_techniques'] = [re.sub(r'\s*（.*?）|\s*\(.*?\)', '', t).strip() for t in techniques]
+        else:
+            # 如果没有列表项，尝试按逗号分割
+            result['enhancement_techniques'] = [t.strip() for t in techniques_text.split(',') if t.strip()]
+    
+    # 提取 keywords_added（列表形式）
+    keywords_match = re.search(r'\*\*keywords_added\*\*[：:]\s*(.*?)(?=\n\*\*|$)', content, re.DOTALL)
+    if keywords_match:
+        keywords_text = keywords_match.group(1).strip()
+        keywords = re.findall(r'-\s*([^\n]+)', keywords_text)
+        if keywords:
+            result['keywords_added'] = [k.strip() for k in keywords]
+        else:
+            result['keywords_added'] = [k.strip() for k in keywords_text.split(',') if k.strip()]
+    
+    # 提取 structure_applied
+    structure_match = re.search(r'\*\*structure_applied\*\*[：:]\s*([^\n]+)', content)
+    if structure_match:
+        result['structure_applied'] = structure_match.group(1).strip()
+    
+    # 设置默认值（如果某些字段缺失）
+    if 'thinking_process' not in result:
+        result['thinking_process'] = "优化过程分析"
+    if 'improved_prompt' not in result:
+        result['improved_prompt'] = ""
+    if 'enhancement_techniques' not in result:
+        result['enhancement_techniques'] = []
+    if 'keywords_added' not in result:
+        result['keywords_added'] = []
+    if 'structure_applied' not in result:
+        result['structure_applied'] = "通用框架"
+    
+    print(f"✅ 从Markdown中提取了 {len(result)} 个字段")
+    return result
+
+
+def safe_json_loads(content: str) -> dict:
+    """
+    安全地解析JSON字符串，处理控制字符和Markdown格式问题
+    
+    Args:
+        content: JSON字符串或Markdown格式文本
         
     Returns:
         解析后的字典
@@ -36,11 +135,22 @@ def safe_json_loads(content: str) -> dict:
     Raises:
         JSONDecodeError: 如果所有尝试都失败
     """
+    # 首先检测是否是Markdown格式（包含 **字段名**: 或 **字段名**： 的模式）
+    if '**thinking_process**' in content or '**improved_prompt**' in content:
+        print("🔍 检测到Markdown格式响应，优先尝试Markdown解析...")
+        try:
+            result = parse_markdown_response(content)
+            if result.get('improved_prompt'):
+                print("✅ Markdown格式解析成功")
+                return result
+        except Exception as e:
+            print(f"⚠️ Markdown解析失败: {str(e)}")
+    
     try:
         # 尝试直接解析
         return json.loads(content)
     except json.JSONDecodeError as json_err:
-        print(f"⚠️ JSON解析失败，尝试清理控制字符: {str(json_err)}")
+        print(f"⚠️ JSON解析失败: {str(json_err)}")
         
         # 尝试使用 strict=False 参数（允许某些控制字符）
         try:
@@ -75,6 +185,89 @@ def safe_json_loads(content: str) -> dict:
             print(f"❌ 所有JSON解析尝试均失败")
             print(f"原始内容前500字符: {content[:500]}")
             raise json_err  # 抛出原始错误
+            print("✅ 正则清理后解析成功")
+            return result
+        except Exception as final_err:
+            print(f"❌ 所有JSON解析尝试均失败")
+            print(f"原始内容前500字符: {content[:500]}")
+            raise json_err  # 抛出原始错误
+
+
+def clean_improved_prompt(improved_prompt: str) -> str:
+    """
+    清理 improved_prompt 字段，确保不包含JSON格式的文本
+    处理大模型误将JSON当作优化结果的情况
+    
+    Args:
+        improved_prompt: 原始的 improved_prompt 内容
+        
+    Returns:
+        清理后的纯文本 prompt
+    """
+    # 去除首尾空白
+    cleaned = improved_prompt.strip()
+    
+    # 检测是否是JSON格式（以 { 开头，} 结尾）
+    if cleaned.startswith('{') and cleaned.endswith('}'):
+        print("⚠️ 检测到 improved_prompt 是JSON格式，尝试转换为自然语言...")
+        
+        try:
+            # 尝试解析JSON
+            json_data = json.loads(cleaned)
+            
+            # 将JSON转换为自然语言描述
+            prompt_parts = []
+            
+            # 检查常见字段并构建自然语言描述
+            if "任务描述" in json_data:
+                prompt_parts.append(f"任务：{json_data['任务描述']}")
+            
+            if "约束条件" in json_data:
+                constraints = json_data["约束条件"]
+                if isinstance(constraints, dict):
+                    prompt_parts.append("\n约束条件：")
+                    for key, value in constraints.items():
+                        prompt_parts.append(f"- {key}：{value}")
+            
+            if "输出要求" in json_data:
+                output_req = json_data["输出要求"]
+                if isinstance(output_req, dict):
+                    prompt_parts.append("\n输出要求：")
+                    for key, value in output_req.items():
+                        if value:  # 如果值非空
+                            prompt_parts.append(f"- {key}：{value}")
+                        else:
+                            prompt_parts.append(f"- {key}")
+            
+            if "语气风格" in json_data:
+                prompt_parts.append(f"\n语气风格：{json_data['语气风格']}")
+            
+            if "平台" in json_data:
+                prompt_parts.append(f"\n目标平台：{json_data['平台']}")
+            
+            if prompt_parts:
+                converted = "\n".join(prompt_parts)
+                print(f"✅ 已将JSON格式转换为自然语言（{len(converted)}字符）")
+                
+                # 添加友好的提示文本
+                result = f"""请完成以下任务：
+
+{converted}
+
+请用专业且{json_data.get('语气风格', '友好')}的语气完成这个任务，确保输出符合所有要求。"""
+                
+                return result
+        
+        except json.JSONDecodeError:
+            print("⚠️ JSON解析失败，保持原样")
+            pass
+    
+    # 检测是否包含大量JSON特征（即使不是完整JSON）
+    if cleaned.count('{') > 3 and cleaned.count(':') > 3 and cleaned.count('"') > 6:
+        print("⚠️ 检测到类似JSON的结构化文本，但不是完整JSON格式")
+        # 保持原样，但添加警告
+    
+    return cleaned
 
 
 class OptimizedPrompt(BaseModel):
@@ -280,6 +473,24 @@ class PromptOptimizer:
             print("🔨 正在验证数据结构...")
             optimized = OptimizedPrompt(**result_dict)
             
+            # 清理 improved_prompt 字段（如果大模型错误地返回了JSON格式）
+            print("🧹 检查并清理 improved_prompt 格式...")
+            original_prompt = optimized.improved_prompt
+            cleaned_prompt = clean_improved_prompt(original_prompt)
+            
+            if cleaned_prompt != original_prompt:
+                print(f"✨ improved_prompt 已从 {len(original_prompt)} 字符优化为 {len(cleaned_prompt)} 字符")
+                # 创建新的优化结果对象
+                optimized = OptimizedPrompt(
+                    thinking_process=optimized.thinking_process,
+                    improved_prompt=cleaned_prompt,
+                    enhancement_techniques=optimized.enhancement_techniques,
+                    keywords_added=optimized.keywords_added,
+                    structure_applied=optimized.structure_applied
+                )
+            else:
+                print("✅ improved_prompt 格式正确，无需清理")
+            
             print("✅ 优化完成！")
             print(f"{'='*60}\n")
             
@@ -419,7 +630,7 @@ class PromptOptimizer:
 标签定义：...
 示例：...
 让我们分析评论的情感倾向。（❌ 缺少明确的文本插入位置）
-输出格式：{{"label": "标签名"}}（❌ 不要要求JSON格式，应该直接输出标签）
+输出格式：直接输出标签名（❌ 如果要求JSON格式也是错误的，应该直接输出标签）
 ```
 """
         
@@ -905,41 +1116,102 @@ class PromptOptimizer:
         meta_prompt = f"""
 你是一位世界级的 Prompt Engineering 专家，擅长将简单的指令转化为结构化、高性能的专家级 Prompt。
 
+⚠️ **重要：明确你的角色定位**
+- 你的角色：Prompt 优化专家，负责改进和优化 Prompt
+- 你的任务：分析并优化用户提供的原始 Prompt，而不是执行这个 Prompt
+- 关键区别：
+  * ❌ 错误理解：用户说"推荐索尼耳机" → 你直接推荐耳机（执行任务）
+  * ✅ 正确理解：用户说"推荐索尼耳机" → 你优化这句话，生成一个更好的 Prompt（优化任务）
+  
+**举例说明**：
+- 用户输入："写一篇关于AI的文章"
+- 你不应该：直接写文章
+- 你应该：优化这个请求，生成类似"你是一位资深科技作家。请撰写一篇关于AI的深度分析文章，要求：1. 涵盖AI的发展历史... 2. 字数2000字... 3. 包含具体案例..."
+
 **你的任务流程**：
 
-1. **深度理解**：仔细分析用户的原始 Prompt，识别其核心意图和隐含需求
+1. **深度理解**：仔细分析用户的原始 Prompt 和场景描述，识别其核心意图和隐含需求
+   - 记住：你是在分析这个 Prompt 本身，不是在执行它
 
-2. **三大优化策略**：
+2. **场景融合（关键步骤）**：
+   - ⚠️ **必须将场景上下文信息完整融入到优化后的 Prompt 中**
+   - 场景描述中的所有关键信息（如目标平台、受众、语气风格、特殊要求等）都必须在 improved_prompt 中明确体现
+
+3. **三大优化策略**：
    
    a) **语义扩展 (Semantic Expansion)**
       - 补充缺失的上下文信息
       - 明确隐含的约束条件
       - 规范输出格式要求
+      - **将场景描述中的信息转化为明确的要求**
    
    b) **关键词增强 (Keywords Enhancement)**
       - 识别任务所属的专业领域
       - 加入该领域的专业术语和行业概念
       - 用精确的词汇替换模糊表达
+      - **提取场景中的关键特征词**
    
    c) **结构化重写 (Template Application)**
       - 必须使用 **{template_name}** 框架进行重写
       - 确保 Prompt 逻辑清晰、层次分明
 
-3. **优化原则**（本次优化重点关注）：
+4. **优化原则**（本次优化重点关注）：
 {principles_text}
 {extra_text}
 
 **场景上下文**：{scene_desc if scene_desc else "通用场景"}
 
-**输出要求**：
-请以 JSON 格式返回结果，包含以下字段：
-- thinking_process: 你的优化思考过程（200字左右）
-- improved_prompt: 优化后的完整 Prompt（可直接使用）
-- enhancement_techniques: 使用的优化技术列表
-- keywords_added: 新增的关键词列表
-- structure_applied: 应用的框架名称
+⚠️ **再次强调**：优化后的 Prompt 必须包含场景上下文中的所有关键信息（平台、受众、语气、特殊要求等），不要遗漏！
 
-**重要**：improved_prompt 应该是一个完整的、可以直接复制使用的高质量 Prompt，不要包含任何元信息或说明。
+**输出要求**：
+你必须以标准JSON格式返回结果，包含以下5个字段（全部必需）：
+
+1. thinking_process - 字符串类型，记录你的优化思考过程（约200字）。说明你如何理解原始Prompt，以及为什么这样优化。
+2. improved_prompt - 字符串类型，优化后的完整Prompt文本（自然语言形式）。⚠️ 这是优化后的指令，不是执行结果！
+3. enhancement_techniques - 数组类型，包含使用的优化技术，如["语义扩展", "关键词增强"]
+4. keywords_added - 数组类型，包含新增的关键词，如["专业术语1", "专业术语2"]
+5. structure_applied - 字符串类型，应用的框架名称，如"CO-STAR"
+
+⚠️ 重要提示：
+- 不要使用Markdown格式（即不要用 **字段名**: 的形式）
+- 必须返回纯JSON格式
+- improved_prompt字段必须是自然语言文本，不能是JSON对象或结构化数据
+- improved_prompt是一个"改进后的指令"，不是"执行这个指令的结果"
+- 如果用户输入本身是JSON格式，请理解其含义后转换为自然语言的Prompt
+
+正确的JSON结构应该是：根对象包含5个字段，其中3个是字符串，2个是字符串数组。
+
+**关键说明 - improved_prompt 字段的正确格式**：
+
+⚠️ **再次强调：你是在优化Prompt，不是在执行Prompt！**
+
+improved_prompt字段应该是自然语言形式的完整指令文本，而不是JSON或结构化数据。
+
+错误做法：在improved_prompt中返回JSON对象或键值对形式的数据。
+
+❌ **常见错误示例（小模型容易犯的错误）**：
+
+用户输入："推荐索尼降噪耳机"
+
+错误输出（直接执行任务）：
+```
+improved_prompt: "我推荐索尼WH-1000XM5降噪耳机，价格约2000元，降噪效果出色..."
+```
+这是错误的！因为你直接推荐了耳机，而不是生成一个让别人推荐耳机的Prompt。
+
+✅ **正确示例（优化Prompt）**：
+
+用户输入："推荐索尼降噪耳机"
+场景："发在小红书上，目标是学生党，突出性价比和降噪，语气要活泼"
+
+正确输出（生成优化后的指令）：
+```
+improved_prompt: "你是一位……，擅长……。请为用户……"
+```
+
+看到区别了吗？improved_prompt 是一个"指令"（告诉AI做什么），不是"结果"（直接给出答案）。
+
+注意：如果用户的原始输入本身就是JSON格式，你需要理解其含义后转换为流畅的自然语言Prompt。
 """
         return meta_prompt
     
