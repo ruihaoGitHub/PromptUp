@@ -62,12 +62,16 @@ class MetricsCalculator:
         if lang == "zh":
             pred_tokens = " ".join(jieba.cut(prediction))
             ref_tokens = " ".join(jieba.cut(reference))
+            # 中文不需要 stemmer（词干提取是英文特有的）
+            use_stemmer = False
         else:
             pred_tokens = prediction
             ref_tokens = reference
+            # 英文使用 stemmer
+            use_stemmer = True
         
         # 使用 rouge_scorer 计算
-        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=use_stemmer)
         scores = scorer.score(ref_tokens, pred_tokens)
         
         # 返回 F1 分数 (0-100)

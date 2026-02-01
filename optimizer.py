@@ -297,7 +297,6 @@ class SummarizationPrompt(BaseModel):
     role_setting: str = Field(description="角色设定，如：你是一位专业的技术文档编写专家")
     extraction_rules: list[str] = Field(description="具体的提取规则，如：必须保留所有数字、日期和责任人")
     negative_constraints: list[str] = Field(description="负面约束，明确告诉模型不要做什么")
-    format_template: str = Field(description="严格的输出格式模板，通常包含Markdown结构")
     step_by_step_guide: str = Field(description="给模型的思考步骤，如：通读全文 -> 标记重点 -> 撰写初稿")
     focus_areas: list[str] = Field(description="核心关注点，针对用户需求强调的信息")
     final_prompt: str = Field(description="组合好的最终可用的摘要 Prompt，{{text}}占位符")
@@ -531,15 +530,13 @@ class PromptOptimizer:
     
     def optimize_classification(self,
                                task_description: str,
-                               labels: list[str],
-                               example_texts: Optional[list[str]] = None) -> ClassificationPrompt:
+                               labels: list[str]) -> ClassificationPrompt:
         """
         针对分类任务的优化函数
         
         Args:
             task_description: 分类任务描述，如 "判断用户评论的情感倾向"
             labels: 目标标签列表，如 ["Positive", "Negative", "Neutral"]
-            example_texts: 可选的示例文本，用于生成 Few-Shot 样本
             
         Returns:
             ClassificationPrompt: 优化后的分类 Prompt
@@ -553,48 +550,37 @@ class PromptOptimizer:
         print(f"🏷️  目标标签: {', '.join(labels)}")
         print(f"{'='*60}\n")
         
-        # 构建分类任务专用的 Meta-Prompt
-        # 不使用 f-string，避免花括号冲突
+        # 构建分类任务专用的 Meta-Prompt（简化版）
+        # 不使用 f-string，避免花括号示例被解析
+        labels_str = ', '.join(labels)
+        first_label = labels[0] if labels else '标签'
+        
         system_prompt = """
-你是一个专门构建 AI 文本分类器的专家。你的目标是编写一个**高精度**的分类 Prompt。
+你是一个专门构建 AI 文本分类器的专家。你的目标是编写一个**简洁高效**的分类 Prompt。
 
-**任务描述**：TASK_DESCRIPTION
-**目标标签**：TARGET_LABELS
+**任务描述**：TASK_DESCRIPTION_PLACEHOLDER
+**目标标签**：LABELS_PLACEHOLDER
 
 **你的任务**：
 
-1. **标签消歧 (Label Disambiguation)**
-   - 为每个标签编写清晰、具体的定义
-   - 明确边界情况（Edge Cases）和判断标准
-   - 说明什么样的文本属于该标签，什么不属于
-
-2. **样本合成 (Few-Shot Generation)**
-   - 根据标签定义，创作 3-5 个典型的高质量示例
-   - 示例必须覆盖不同标签，具有代表性
-   - 每个示例包含 input（输入文本）和 label（对应标签）
-
-3. **思维链设计 (Chain of Thought)**
-   - 设计引导语，让模型先分析特征，再给出分类结果
-   - 对于复杂分类任务，使用 "Let's think step by step"
-
-4. **格式锁定 (Output Format)**
-   - **关键要求**：模型必须**只输出标签名称本身**，不要输出JSON格式、不要加引号、不要解释
-   - 例如：如果标签是"积极"，就只输出：积极
-   - **禁止**输出：{{"label": "积极"}} 或 "积极" 或 标签：积极 等格式
-   - 确保输出可以被代码轻松解析
-   - 在 Prompt 末尾明确强调："请只输出标签名称，不要输出其他任何内容"
-
-5. **角色设定**
+1. **角色设定**
    - 为分类器设定一个专业的角色身份
    - 增强模型对任务的理解和执行准确度
+
+2. **格式锁定 (Output Format)**
+   - **关键要求**：模型必须**只输出标签名称本身**，不要输出JSON格式、不要加引号、不要解释
+   - 例如：如果标签是"积极"，就只输出：积极
+   - **禁止**输出：带花括号的JSON格式 或 带引号 或 带说明文字
+   - 确保输出可以被代码轻松解析
+   - 在 Prompt 末尾明确强调："请只输出标签名称，不要输出其他任何内容"
 
 **输出要求**：
 请以 JSON 格式返回结果，包含以下字段：
 - thinking_process: 你的优化思考过程
 - role_definition: 角色设定描述
-- label_definitions: 标签定义字典（键为标签名，值为详细定义）
-- few_shot_examples: 示例列表（每个包含 input 和 label 字段）
-- reasoning_guidance: 思维链引导语
+- label_definitions: 空字典
+- few_shot_examples: 空列表
+- reasoning_guidance: 空字符串
 - output_format: 输出格式要求说明
 - final_prompt: 完整的、可直接使用的分类 Prompt
 - enhancement_techniques: 使用的优化技术列表
@@ -603,40 +589,30 @@ class PromptOptimizer:
 - final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的分类 Prompt
 - **必须在 Prompt 中明确标注待分类文本的位置**，使用以下任一占位符格式：
   * [待分类文本] （推荐）
-  * {{{{text}}}} （两个花括号）
   * [输入评论]
   * [待处理文本]
 - 占位符应该放在合理的位置，比如：
   * "评论内容：[待分类文本]"
   * "请分析以下文本：[待分类文本]"
-  * "文本：{{{{text}}}}"
 - **不要**只说"分析这个评论"或"判断情感"而不提供具体的插入位置
 - final_prompt 必须是可以通过简单的字符串替换就能使用的模板
 
 **示例正确格式**：
 ```
-你是专业的情感分析师。
-标签定义：...
-示例：...
-现在请分析以下评论的情感倾向：
+你是专业的分类专家。
+可选的标签有：LABELS_PLACEHOLDER
+
+现在请对以下文本进行分类：
 [待分类文本]
 
-**重要**：请只输出标签名称（如：积极、消极、中立），不要输出JSON格式，不要加任何解释。
-```
-
-**示例错误格式（不要生成这样的）**：
-```
-你是专业的情感分析师。
-标签定义：...
-示例：...
-让我们分析评论的情感倾向。（❌ 缺少明确的文本插入位置）
-输出格式：直接输出标签名（❌ 如果要求JSON格式也是错误的，应该直接输出标签）
+**重要**：请只输出标签名称（如：FIRST_LABEL_PLACEHOLDER），不要输出JSON格式，不要加任何解释。
 ```
 """
         
-        # 手动替换变量
-        system_prompt = system_prompt.replace("TASK_DESCRIPTION", task_description)
-        system_prompt = system_prompt.replace("TARGET_LABELS", ', '.join(labels))
+        # 手动替换占位符
+        system_prompt = system_prompt.replace("TASK_DESCRIPTION_PLACEHOLDER", task_description)
+        system_prompt = system_prompt.replace("LABELS_PLACEHOLDER", labels_str)
+        system_prompt = system_prompt.replace("FIRST_LABEL_PLACEHOLDER", first_label)
         
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -780,20 +756,14 @@ class PromptOptimizer:
    - 例如：不要使用模糊词汇、不要遗漏数据、不要添加原文没有的信息
    - 防止模型"幻觉"（编造细节）
 
-4. **结构化输出 (Structured Format)**
-   - 根据源文本类型设计合适的输出格式
-   - 会议记录 → 表格或分层结构（背景、决策、行动计划）
-   - 新闻报道 → TL;DR + 关键事实
-   - 学术论文 → 研究目的、方法、结论、意义
-
-5. **思考步骤设计 (Step-by-Step Guide)**
+4. **思考步骤设计 (Step-by-Step Guide)**
    - 给模型明确的处理流程，如：
      Step 1: 通读全文，标记关键信息
      Step 2: 根据关注点筛选内容
      Step 3: 按结构组织信息
      Step 4: 精简表达，确保准确
 
-6. **关注点锚定 (Focus Areas)**
+5. **关注点锚定 (Focus Areas)**
    - 将用户的核心关注点转化为具体的信息类别
    - 在 Prompt 中多次强调这些关注点的优先级
 
@@ -803,7 +773,6 @@ class PromptOptimizer:
 - role_setting: 角色设定描述
 - extraction_rules: 提取规则列表（至少3-5条）
 - negative_constraints: 负面约束列表（至少3条）
-- format_template: 输出格式模板（使用 Markdown）
 - step_by_step_guide: 处理步骤说明
 - focus_areas: 核心关注点列表
 - final_prompt: 完整的、可直接使用的摘要 Prompt（用 {{{{text}}}} 作为待摘要文本的占位符）
