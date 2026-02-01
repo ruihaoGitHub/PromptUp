@@ -5,8 +5,18 @@
 import jieba
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge_score import rouge_scorer
+from rouge_score.tokenizers import Tokenizer
 from sklearn.metrics import accuracy_score
 from typing import List
+
+
+class ChineseTokenizer(Tokenizer):
+    """中文分词器，用于 ROUGE 计算"""
+    
+    def tokenize(self, text):
+        """使用 jieba 进行中文分词"""
+        # jieba 分词，返回词列表
+        return list(jieba.cut(text))
 
 
 class MetricsCalculator:
@@ -58,21 +68,23 @@ class MetricsCalculator:
             >>> calc.calculate_rouge("我喜欢AI", "我超级喜欢AI", lang="zh")
             {'rouge1': 75.0, 'rouge2': 50.0, 'rougeL': 75.0}
         """
-        # 中文需要分词，否则 ROUGE 计算不准
+        # 中文需要使用自定义分词器，否则 ROUGE 会把整句话当作一个词
         if lang == "zh":
-            pred_tokens = " ".join(jieba.cut(prediction))
-            ref_tokens = " ".join(jieba.cut(reference))
-            # 中文不需要 stemmer（词干提取是英文特有的）
-            use_stemmer = False
+            # 使用自定义的中文分词器
+            scorer = rouge_scorer.RougeScorer(
+                ['rouge1', 'rouge2', 'rougeL'], 
+                use_stemmer=False,
+                tokenizer=ChineseTokenizer()
+            )
         else:
-            pred_tokens = prediction
-            ref_tokens = reference
-            # 英文使用 stemmer
-            use_stemmer = True
+            # 英文使用默认分词器和 stemmer
+            scorer = rouge_scorer.RougeScorer(
+                ['rouge1', 'rouge2', 'rougeL'], 
+                use_stemmer=True
+            )
         
-        # 使用 rouge_scorer 计算
-        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=use_stemmer)
-        scores = scorer.score(ref_tokens, pred_tokens)
+        # 计算 ROUGE 分数
+        scores = scorer.score(reference, prediction)
         
         # 返回 F1 分数 (0-100)
         return {
@@ -99,11 +111,13 @@ class MetricsCalculator:
             >>> calc.calculate_bleu("I love AI", "I love AI very much", lang="en")
             54.32
         """
-        # 中文需要分词
+        # 中文需要分词，否则 BLEU 会把整句话当作一个词
         if lang == "zh":
+            # 使用 jieba 分词，转换为词列表
             pred_tokens = list(jieba.cut(prediction))
             ref_tokens = [list(jieba.cut(reference))]  # reference 需要是 list of list
         else:
+            # 英文按空格分词
             pred_tokens = prediction.split()
             ref_tokens = [reference.split()]
         

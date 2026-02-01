@@ -102,7 +102,7 @@ def _render_nvidia_config():
     
     # NVIDIA 模型选择
     categories = list(NVIDIA_MODELS.keys())
-    default_category_index = categories.index("Qwen 系列") if "Qwen 系列" in categories else 0
+    default_category_index = categories.index("Llama 系列") if "Llama 系列" in categories else 0
     
     selected_category = st.selectbox(
         "📂 选择模型系列",
@@ -112,7 +112,7 @@ def _render_nvidia_config():
     )
     
     models_in_category = NVIDIA_MODELS[selected_category]
-    default_model = "qwen/qwen3-235b-a22b"
+    default_model = "meta/llama-3.3-70b-instruct"
     default_model_index = 0
     if default_model in models_in_category:
         default_model_index = models_in_category.index(default_model)

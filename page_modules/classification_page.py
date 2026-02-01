@@ -3,7 +3,7 @@
 提供分类器 Prompt 生成和优化功能
 """
 import streamlit as st
-from pages.base_page import BasePage
+from .base_page import BasePage
 
 
 class ClassificationPage(BasePage):
@@ -75,7 +75,7 @@ class ClassificationPage(BasePage):
                         self._handle_optimization_error(e)
         
         # 显示分类任务优化结果
-        if st.session_state.classification_result:
+        if 'classification_result' in st.session_state and st.session_state.classification_result:
             result = st.session_state.classification_result
             
             with col2:
@@ -101,6 +101,112 @@ class ClassificationPage(BasePage):
                 # 直接显示代码框，带有复制按钮
                 st.code(result.final_prompt, language=None)
                 st.caption("📌 点击代码框右上角的复制按钮即可复制")
+        
+        # 验证实验室区域
+        if 'classification_result' in st.session_state and st.session_state.classification_result:
+            self._render_validation_lab(st.session_state.classification_result)
+    
+    def _render_validation_lab(self, result):
+        """渲染分类验证实验室"""
+        st.divider()
+        st.subheader("🔬 效果验证实验室")
+        st.markdown("*使用测试样本验证分类器的准确性*")
+        
+        # 默认测试数据
+        default_test_cases = [
+            {"text": "这个产品真的很棒，质量超出预期！", "expected": "积极"},
+            {"text": "太失望了，完全不值这个价格", "expected": "消极"},
+            {"text": "还可以吧，没有特别的感觉", "expected": "中立"}
+        ]
+        
+        col_test1, col_test2 = st.columns([1, 1])
+        
+        with col_test1:
+            st.markdown("**📝 测试样本**")
+            st.caption("修改下方的测试文本和预期标签：")
+            
+            test_cases = []
+            for i, case in enumerate(default_test_cases):
+                with st.container():
+                    st.markdown(f"**测试 {i+1}:**")
+                    text = st.text_input(f"文本 {i+1}", value=case["text"], key=f"cls_test_text_{i}")
+                    expected = st.text_input(f"预期标签 {i+1}", value=case["expected"], key=f"cls_test_expected_{i}")
+                    test_cases.append({"text": text, "expected": expected})
+        
+        with col_test2:
+            st.markdown("**🎯 评分标准**")
+            st.info("""
+**Accuracy（准确率）**
+- 🟢 **优秀** ≥ 80%
+- 🟡 **良好** 60% - 80%
+- 🔴 **需改进** < 60%
+
+**计算方式**：正确预测数 / 总样本数 × 100%
+            """)
+        
+        # 运行验证按钮
+        if st.button("🚀 运行验证测试", type="primary", use_container_width=True, key="cls_validation_btn"):
+            with st.spinner("⏳ 正在使用优化后的 Prompt 进行分类..."):
+                try:
+                    results = []
+                    for i, case in enumerate(test_cases):
+                        # 替换占位符
+                        prompt_with_text = result.final_prompt.replace("[待分类文本]", case["text"])
+                        prompt_with_text = prompt_with_text.replace("{{text}}", case["text"])
+                        prompt_with_text = prompt_with_text.replace("{text}", case["text"])
+                        
+                        # 调用 LLM
+                        response = self.optimizer.llm.invoke(prompt_with_text)
+                        predicted = response.content.strip()
+                        
+                        results.append({
+                            "text": case["text"],
+                            "expected": case["expected"],
+                            "predicted": predicted,
+                            "correct": predicted == case["expected"]
+                        })
+                    
+                    # 保存结果
+                    st.session_state.cls_validation_results = results
+                    
+                    # 计算准确率
+                    accuracy = sum(1 for r in results if r["correct"]) / len(results) * 100
+                    st.session_state.cls_accuracy = accuracy
+                    
+                except Exception as e:
+                    st.error(f"❌ 验证失败：{str(e)}")
+        
+        # 显示验证结果
+        if 'cls_validation_results' in st.session_state and st.session_state.cls_validation_results:
+            results = st.session_state.cls_validation_results
+            accuracy = st.session_state.cls_accuracy
+            
+            st.divider()
+            st.markdown("### 📊 验证结果")
+            
+            # 显示准确率
+            if accuracy >= 80:
+                st.success(f"🎉 准确率：{accuracy:.1f}% - 🟢 优秀！")
+            elif accuracy >= 60:
+                st.info(f"👍 准确率：{accuracy:.1f}% - 🟡 良好")
+            else:
+                st.warning(f"⚠️ 准确率：{accuracy:.1f}% - 🔴 需改进")
+            
+            # 详细结果表格
+            st.markdown("**详细结果：**")
+            for i, r in enumerate(results, 1):
+                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                with col1:
+                    st.text(f"{r['text'][:40]}...")
+                with col2:
+                    st.text(f"预期: {r['expected']}")
+                with col3:
+                    st.text(f"预测: {r['predicted']}")
+                with col4:
+                    if r['correct']:
+                        st.success("✅")
+                    else:
+                        st.error("❌")
     
     def _validate_api_key(self):
         """验证 API Key"""

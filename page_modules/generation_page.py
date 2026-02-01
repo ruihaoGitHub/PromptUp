@@ -3,7 +3,7 @@
 提供通用 Prompt 生成和优化功能
 """
 import streamlit as st
-from pages.base_page import BasePage
+from .base_page import BasePage
 
 
 class GenerationPage(BasePage):
@@ -85,7 +85,7 @@ class GenerationPage(BasePage):
                     self._handle_optimization_error(e)
         
         # 生成任务结果展示区域
-        if st.session_state.result:
+        if 'result' in st.session_state and st.session_state.result:
             result = st.session_state.result
             
             with col2:
@@ -94,21 +94,38 @@ class GenerationPage(BasePage):
             # 优化思路展示
             self.show_thinking_process(result)
             
-            # 优化后的 Prompt
-            st.markdown("**✨ 优化后的 Prompt（可直接复制）：**")
-            st.text_area(
-                "优化结果",
-                value=result.improved_prompt,
-                height=300,
-                label_visibility="collapsed"
-            )
+            # 原始 Prompt 和优化后 Prompt 对比展示
+            st.markdown("### 📊 Prompt 对比")
             
-            # 直接显示代码框，带有复制按钮
+            compare_col1, compare_col2 = st.columns(2)
+            
+            with compare_col1:
+                st.markdown("**📄 原始 Prompt**")
+                original_prompt = st.session_state.get('original_user_input', '未保存')
+                st.text_area(
+                    "原始输入",
+                    value=original_prompt,
+                    height=150,
+                    label_visibility="collapsed",
+                    disabled=True
+                )
+            
+            with compare_col2:
+                st.markdown("**✨ 优化后的 Prompt**")
+                st.text_area(
+                    "优化结果",
+                    value=result.improved_prompt,
+                    height=150,
+                    label_visibility="collapsed"
+                )
+            
+            # 完整的优化后 Prompt 代码框
+            st.markdown("**📋 完整优化后的 Prompt（可直接复制）：**")
             st.code(result.improved_prompt, language=None)
             st.caption("📌 点击代码框右上角的复制按钮即可复制")
         
         # A/B 对比测试区域
-        if st.session_state.result:
+        if 'result' in st.session_state and st.session_state.result:
             self._render_ab_test(st.session_state.result)
     
     def _validate_api_key(self):

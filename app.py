@@ -5,7 +5,7 @@ AI Prompt 自动优化系统 - Streamlit 主界面
 import streamlit as st
 from dotenv import load_dotenv
 from optimizer import PromptOptimizer
-from pages import (
+from page_modules import (
     GenerationPage,
     ClassificationPage, 
     SummarizationPage,

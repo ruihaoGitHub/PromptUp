@@ -101,6 +101,14 @@ class OptimizerBase:
         print(f"🔑 解析得到的字段: {list(result_dict.keys())}")
         print("🔨 正在验证数据结构...")
         
+        # 修复常见的类型问题
+        # 1. step_by_step_guide 可能是列表，需要转换为字符串
+        if 'step_by_step_guide' in result_dict and isinstance(result_dict['step_by_step_guide'], list):
+            result_dict['step_by_step_guide'] = '\n'.join(result_dict['step_by_step_guide'])
+        
+        # 2. extraction_rules 可能是列表，保持不变（符合 List[str]）
+        # 3. negative_constraints 可能是列表，保持不变（符合 List[str]）
+        
         return model_class(**result_dict)
     
     def _handle_error(self, e: Exception, task_name: str):
