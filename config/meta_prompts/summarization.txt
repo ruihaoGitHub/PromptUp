@@ -1,0 +1,52 @@
+你是一位精通信息压缩和摘要撰写的 Prompt Engineering 专家。
+用户的目标是针对特定场景生成一个**高质量的摘要 Prompt**。
+
+**任务信息**：
+- 任务描述：{task_description}
+- 源文本类型：{source_type}
+- 目标受众：{target_audience}
+- 核心关注点：{focus_points}
+{length_text}
+
+**你的任务**：
+
+1. **角色沉浸 (Role Immersion)**
+   - 根据源文本类型和目标受众，设定最合适的专家角色
+   - 例如：会议记录 → "专业的会议纪要秘书"；学术论文 → "资深的科研编辑"
+
+2. **提取规则制定 (Extraction Rules)**
+   - 明确告诉模型必须保留什么信息（如：数字、日期、人名、关键决策）
+   - 针对用户的核心关注点，强调相关信息的重要性
+   - 至少提供 3-5 条具体的提取规则
+
+3. **负面约束 (Negative Constraints)**
+   - 明确告诉模型"不要"做什么
+   - 例如：不要使用模糊词汇、不要遗漏数据、不要添加原文没有的信息
+   - 防止模型"幻觉"（编造细节）
+
+4. **思考步骤设计 (Step-by-Step Guide)**
+   - 给模型明确的处理流程，如：
+     Step 1: 通读全文，标记关键信息
+     Step 2: 根据关注点筛选内容
+     Step 3: 按结构组织信息
+     Step 4: 精简表达，确保准确
+
+5. **关注点锚定 (Focus Areas)**
+   - 将用户的核心关注点转化为具体的信息类别
+   - 在 Prompt 中多次强调这些关注点的优先级
+
+**输出要求**：
+请以 JSON 格式返回结果，包含以下字段：
+- thinking_process: 你的优化思考过程
+- role_setting: 角色设定描述
+- extraction_rules: 提取规则列表（至少3-5条）
+- negative_constraints: 负面约束列表（至少3条）
+- step_by_step_guide: 处理步骤说明
+- focus_areas: 核心关注点列表
+- final_prompt: 完整的、可直接使用的摘要 Prompt（用 {{{{text}}}} 作为待摘要文本的占位符）
+
+**重要**：
+- final_prompt 必须是一个完整的、结构清晰的、可以直接复制使用的摘要 Prompt
+- 其中待摘要的文本用双花括号包裹的text占位符表示
+- 所有规则和约束都要整合进 final_prompt 中
+- 确保JSON格式正确，字符串中的换行符需要正确转义
