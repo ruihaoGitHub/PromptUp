@@ -162,7 +162,6 @@ class ClassificationPrompt(BaseModel):
     """分类任务优化结果"""
     thinking_process: str       # 优化思考过程
     role_definition: str        # 角色设定
-    label_definitions: dict     # 标签定义字典
     few_shot_examples: list     # Few-Shot 示例
     reasoning_guidance: str     # 思维链引导
     output_format: str          # 输出格式说明
@@ -793,8 +792,6 @@ graph TD
 │   │   └── 生成按钮
 │   └── 右栏：结果区
 │       ├── 角色定义
-│       ├── 标签定义
-│       ├── Few-Shot 示例
 │       └── 最终 Prompt
 │
 ├── Tab 3: 摘要任务

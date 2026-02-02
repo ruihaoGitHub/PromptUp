@@ -23,13 +23,22 @@ class SearchSpaceGenerator:
         self.llm = llm
         self.provider = provider
     
-    def generate(self, task_description: str, task_type: str = "classification") -> SearchSpace:
+    def generate(self, task_description: str, task_type: str = "classification", **kwargs) -> SearchSpace:
         """
         让 LLM 自动分析任务，生成可供搜索的变量池
         
         Args:
             task_description: 任务描述
             task_type: 任务类型 (classification/summarization/translation)
+            **kwargs: 额外的任务配置信息
+                - labels: 分类任务的标签列表
+                - source_type: 摘要任务的源文本类型
+                - target_audience: 摘要任务的目标受众
+                - focus_points: 摘要任务的核心关注点
+                - source_lang: 翻译任务的源语言
+                - target_lang: 翻译任务的目标语言
+                - domain: 翻译任务的应用领域
+                - tone: 翻译任务的期望风格
             
         Returns:
             SearchSpace 对象，包含 roles, styles, techniques
@@ -44,9 +53,46 @@ class SearchSpaceGenerator:
         # 使用外部模板加载 Meta-Prompt
         system_prompt = get_search_space_meta_prompt()
         
-        user_prompt = f"""
+        # 构建详细的任务上下文
+        context_info = f"""
 任务类型：{task_type}
 任务描述：{task_description}
+"""
+        
+        # 根据任务类型添加特定的上下文信息
+        if task_type == "classification" and kwargs.get('labels'):
+            context_info += f"""
+分类标签：{', '.join(kwargs['labels'])}
+"""
+        elif task_type == "summarization":
+            if kwargs.get('source_type'):
+                context_info += f"""
+源文本类型：{kwargs['source_type']}
+"""
+            if kwargs.get('target_audience'):
+                context_info += f"""
+目标受众：{kwargs['target_audience']}
+"""
+            if kwargs.get('focus_points'):
+                context_info += f"""
+核心关注点：{kwargs['focus_points']}
+"""
+        elif task_type == "translation":
+            if kwargs.get('source_lang') and kwargs.get('target_lang'):
+                context_info += f"""
+翻译方向：{kwargs['source_lang']} → {kwargs['target_lang']}
+"""
+            if kwargs.get('domain'):
+                context_info += f"""
+应用领域：{kwargs['domain']}
+"""
+            if kwargs.get('tone'):
+                context_info += f"""
+期望风格：{kwargs['tone']}
+"""
+        
+        user_prompt = f"""
+{context_info}
 
 请为这个任务设计：
 1. 5个不同的角色定位（从保守到创新，覆盖不同专业背景）
@@ -143,26 +189,5 @@ class SearchSpaceGenerator:
             print(f"\n完整错误堆栈：")
             traceback.print_exc()
             
-            print(f"\n⚠️ 使用默认搜索空间...\n")
-            # 返回默认的搜索空间
-            return SearchSpace(
-                roles=[
-                    "资深专家",
-                    "数据分析师",
-                    "领域顾问",
-                    "实践者",
-                    "研究员"
-                ],
-                styles=[
-                    "严谨学术",
-                    "通俗易懂",
-                    "简洁明了",
-                    "详尽全面",
-                    "系统化"
-                ],
-                techniques=[
-                    "Let's think step by step",
-                    "Provide direct answer without explanation",
-                    "Analyze features then decide"
-                ]
-            )
+            # 重新抛出异常，让上层处理
+            raise RuntimeError(f"搜索空间生成失败: {e}")

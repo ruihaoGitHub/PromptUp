@@ -27,7 +27,8 @@ class RandomSearchAlgorithm:
         test_dataset: list[dict],
         search_space: SearchSpace,
         iterations: int = 5,
-        progress_callback=None
+        progress_callback=None,
+        labels: list[str] = None
     ) -> tuple[list[SearchResult], SearchResult]:
         """
         执行随机搜索优化
@@ -39,6 +40,7 @@ class RandomSearchAlgorithm:
             search_space: 搜索空间
             iterations: 搜索迭代次数
             progress_callback: 进度回调函数 callback(current, total, message)
+            labels: 分类任务的标签列表（仅分类任务需要）
             
         Returns:
             (所有结果列表, 最佳结果)
@@ -63,7 +65,7 @@ class RandomSearchAlgorithm:
             
             # 2. 拼装候选 Prompt
             candidate_prompt = self._build_prompt(
-                task_type, task_description, chosen_role, chosen_style, chosen_tech
+                task_type, task_description, chosen_role, chosen_style, chosen_tech, labels
             )
             
             # 3. 在测试集上跑分
@@ -126,9 +128,16 @@ class RandomSearchAlgorithm:
         return results_log, best_result
     
     def _build_prompt(self, task_type: str, task_description: str, 
-                     role: str, style: str, technique: str) -> str:
+                     role: str, style: str, technique: str, labels: list[str] = None) -> str:
         """构建候选 Prompt"""
         if task_type == "classification":
+            # 动态生成标签列表
+            if labels:
+                labels_str = ", ".join(labels)
+                output_instruction = f"只输出以下标签之一：{labels_str}。不要额外解释。"
+            else:
+                output_instruction = "只输出分类标签，不要额外解释。"
+                
             return f"""你是一位{role}。
 
 任务：{task_description}
@@ -140,7 +149,7 @@ class RandomSearchAlgorithm:
 请对以下文本进行分类：
 [待分类文本]
 
-只输出分类标签，不要额外解释。
+{output_instruction}
 """
         elif task_type == "summarization":
             return f"""你是一位{role}。

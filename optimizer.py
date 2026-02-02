@@ -363,7 +363,8 @@ class PromptOptimizer:
         test_dataset: list[dict],
         search_space: SearchSpace,
         iterations: int = 5,
-        progress_callback=None
+        progress_callback=None,
+        labels: list[str] = None
     ) -> tuple[list[SearchResult], SearchResult]:
         """
         执行随机搜索优化
@@ -375,12 +376,13 @@ class PromptOptimizer:
             search_space: 搜索空间
             iterations: 搜索迭代次数
             progress_callback: 进度回调函数 callback(current, total, message)
+            labels: 分类任务的标签列表（仅分类任务需要）
             
         Returns:
             (所有结果列表, 最佳结果)
         """
         return self.random_search.run(
-            task_description, task_type, test_dataset, search_space, iterations, progress_callback
+            task_description, task_type, test_dataset, search_space, iterations, progress_callback, labels
         )
     
     def run_genetic_algorithm(

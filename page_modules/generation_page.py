@@ -4,6 +4,7 @@
 """
 import streamlit as st
 from .base_page import BasePage
+from config.defaults import get_default_value, get_placeholder
 
 
 class GenerationPage(BasePage):
@@ -20,7 +21,7 @@ class GenerationPage(BasePage):
             user_input = st.text_area(
                 "输入您的简单 Prompt",
                 height=150,
-                placeholder="例如：推荐一下索尼降噪耳机",
+                placeholder=get_placeholder("generation", "user_input"),
                 help="描述您想做什么，可以很简单。",
                 key="gen_user_input"
             )
@@ -33,13 +34,28 @@ class GenerationPage(BasePage):
                     "创意写作 (Creative)",
                     "学术分析 (Academic)"
                 ],
+                index=max(
+                    0,
+                    [
+                        "通用增强 (General)",
+                        "代码生成 (Coding)",
+                        "创意写作 (Creative)",
+                        "学术分析 (Academic)"
+                    ].index(get_default_value("generation", "optimization_mode"))
+                    if get_default_value("generation", "optimization_mode") in [
+                        "通用增强 (General)",
+                        "代码生成 (Coding)",
+                        "创意写作 (Creative)",
+                        "学术分析 (Academic)"
+                    ] else 0
+                ),
                 help="根据任务类型选择合适的优化策略。代码生成侧重步骤化和示例；创意写作强调个性化；学术分析注重逻辑性。",
                 key="gen_optimization_mode"
             )
             
             scene_input = st.text_input(
                 "场景/补充描述（可选）",
-                placeholder="例如：发在小红书上，目标是学生党，突出性价比和降噪，语气要活泼",
+                placeholder=get_placeholder("generation", "scene_input"),
                 help="提供更多背景信息，如编程语言、目标受众等。",
                 key="gen_scene_input"
             )
@@ -55,11 +71,11 @@ class GenerationPage(BasePage):
             
             # 如果用户没有输入，使用默认值
             if not user_input or user_input.strip() == "":
-                user_input = "推荐一下索尼降噪耳机"
+                user_input = get_default_value("generation", "user_input")
                 st.info("💡 未输入内容，使用默认示例：" + user_input)
             
             if not scene_input or scene_input.strip() == "":
-                scene_input = "发在小红书上，目标是学生党，突出性价比和降噪，语气要活泼"
+                scene_input = get_default_value("generation", "scene_input")
             
             # 保存原始prompt到session_state以便A/B对比测试使用
             st.session_state.original_user_input = user_input

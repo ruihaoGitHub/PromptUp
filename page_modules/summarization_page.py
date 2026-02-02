@@ -3,7 +3,9 @@
 提供摘要器 Prompt 生成和优化功能
 """
 import streamlit as st
+import pandas as pd
 from .base_page import BasePage
+from config.defaults import get_default_value, get_placeholder, get_default_lab_dataset
 
 
 class SummarizationPage(BasePage):
@@ -21,7 +23,7 @@ class SummarizationPage(BasePage):
             task_description = st.text_area(
                 "任务描述",
                 height=100,
-                placeholder="例如：对产品发布新闻进行摘要",
+                placeholder=get_placeholder("summarization", "task_description"),
                 help="清晰描述摘要的目的",
                 key="sum_task_desc"
             )
@@ -41,13 +43,37 @@ class SummarizationPage(BasePage):
                     "其他"
                 ],
                 help="选择需要摘要的文本类型",
-                index=0
+                index=max(
+                    0,
+                    [
+                        "新闻报道",
+                        "学术论文",
+                        "会议记录",
+                        "技术文档",
+                        "客户反馈",
+                        "产品评论",
+                        "研究报告",
+                        "邮件内容",
+                        "其他"
+                    ].index(get_default_value("summarization", "source_type"))
+                    if get_default_value("summarization", "source_type") in [
+                        "新闻报道",
+                        "学术论文",
+                        "会议记录",
+                        "技术文档",
+                        "客户反馈",
+                        "产品评论",
+                        "研究报告",
+                        "邮件内容",
+                        "其他"
+                    ] else 0
+                )
             )
             
             # 目标受众
             target_audience = st.text_input(
                 "👥 目标受众",
-                placeholder="例如：高校师生与媒体读者",
+                placeholder=get_placeholder("summarization", "target_audience"),
                 help="摘要将呈现给谁看？这会影响语言风格和详细程度"
             )
             
@@ -55,7 +81,7 @@ class SummarizationPage(BasePage):
             focus_points = st.text_area(
                 "🎯 核心关注点",
                 height=100,
-                placeholder="产品功能、关键数据、发布节奏、行业影响",
+                placeholder=get_placeholder("summarization", "focus_points"),
                 help="摘要中必须保留哪些信息？"
             )
             
@@ -79,14 +105,20 @@ class SummarizationPage(BasePage):
             
             # 如果用户没有输入，使用默认值
             if not task_description or task_description.strip() == "":
-                task_description = "对新闻进行摘要"
+                task_description = get_default_value("summarization", "task_description")
                 st.info("💡 未输入任务描述，使用默认示例")
             
             if not target_audience or target_audience.strip() == "":
-                target_audience = "大学生"
+                target_audience = get_default_value("summarization", "target_audience")
             
             if not focus_points or focus_points.strip() == "":
-                focus_points = "无"
+                focus_points = get_default_value("summarization", "focus_points")
+            
+            # 保存用户输入的任务描述到 session_state，供随机搜索使用
+            st.session_state.user_task_description_summarization = task_description
+            st.session_state.summarization_source_type = source_type
+            st.session_state.summarization_target_audience = target_audience
+            st.session_state.summarization_focus_points = focus_points
             
             with st.spinner("🔮 正在生成提取规则、设计输出格式、构建摘要器..."):
                 try:
@@ -165,43 +197,49 @@ class SummarizationPage(BasePage):
         """渲染摘要验证实验室"""
         st.divider()
         st.subheader("🔬 效果验证实验室")
-        st.markdown("*使用示例文本测试摘要质量*")
-        
-        # 默认测试文本
-        default_text = """近日，某科技公司发布了其最新研发的人工智能助手产品。该产品基于大语言模型技术，能够进行自然语言对话、文本生成、代码编写等多种任务。
-        
-公司CEO在发布会上表示，这款产品经过了18个月的研发，训练数据量达到了10TB，参数规模超过千亿。产品的主要特点包括：更强的上下文理解能力、更准确的多轮对话、以及更好的专业领域知识。
+        st.markdown("*使用测试样本验证摘要质量*")
 
-该产品将首先面向企业客户开放API接口，个人用户版本预计在三个月后推出。定价策略采用按使用量计费的模式，预计每1000次调用收费0.5美元。
+        # 测试数据来源选择
+        st.markdown("**📊 测试数据来源**")
+        data_source = st.radio(
+            "选择数据来源",
+            ["使用默认数据", "上传CSV文件", "手动输入"],
+            key="sum_data_source",
+            help="选择测试数据的来源方式",
+            horizontal=True
+        )
 
-业内专家认为，这款产品的发布标志着人工智能技术在商业应用领域的又一次重要突破，预计将对内容创作、客户服务、教育培训等多个行业产生深远影响。"""
-        # 默认测试文本
-        default_text = """【产品发布快讯】某公司今日发布“NovaWrite AI 写作助手”，面向教育与内容创作场景。产品支持中文长文写作、资料改写与多轮对话。
+        # 根据选择显示相应的输入界面
+        if data_source == "上传CSV文件":
+            self._render_csv_upload()
+        elif data_source == "手动输入":
+            self._render_manual_input()
 
-    官方披露：本次模型训练数据规模约 8TB，推理延迟平均降低 35%，支持 8k 上下文。首批功能包含：大纲生成、风格迁移、数据要点提炼。
-
-    商业化策略：企业版 4 月上线，按调用计费，起步价 0.4 美元/千次；个人版预计 6 月开放。公司将与 20 所高校合作试点。
-
-    行业观点认为，该产品有望提升内容生产效率，并推动教育与媒体行业的 AI 落地。"""
+        # 获取测试数据
+        test_cases = self._get_test_cases()
         
         col_test1, col_test2 = st.columns([1, 1])
         
         with col_test1:
-            st.markdown("**📄 测试文本（原文）**")
-            test_text = st.text_area(
-                "输入要摘要的文本",
-                value=default_text,
-                height=200,
-                key="sum_test_text"
-            )
-            
-            st.markdown("**📌 参考摘要（用于计算ROUGE分数）**")
-            reference_summary = st.text_area(
-                "输入人工撰写的参考摘要",
-                value="某公司发布 NovaWrite AI 写作助手，面向教育与内容创作，支持长文写作、改写与多轮对话。模型训练数据约 8TB，推理延迟降低 35%，支持 8k 上下文，提供大纲生成、风格迁移、要点提炼等功能。企业版 4 月上线按调用计费（0.4 美元/千次），个人版预计 6 月开放，并与 20 所高校试点。业内认为将提升内容效率并推动教育、媒体落地。",
-                height=100,
-                key="sum_reference"
-            )
+            st.markdown("**📄 测试样本（原文 / 参考摘要）**")
+            st.caption("修改下方的测试文本和参考摘要：")
+
+            for i, case in enumerate(test_cases):
+                with st.container():
+                    st.markdown(f"**测试 {i+1}:**")
+                    text = st.text_area(
+                        f"原文 {i+1}",
+                        value=case["text"],
+                        height=120,
+                        key=f"sum_test_text_{i}"
+                    )
+                    expected = st.text_area(
+                        f"参考摘要 {i+1}",
+                        value=case["expected"],
+                        height=100,
+                        key=f"sum_test_expected_{i}"
+                    )
+                    test_cases[i] = {"text": text, "expected": expected}
         
         with col_test2:
             st.markdown("**🎯 评分标准**")
@@ -221,112 +259,222 @@ class SummarizationPage(BasePage):
         
         # 运行验证按钮
         if st.button("🚀 生成摘要", type="primary", use_container_width=True, key="sum_validation_btn"):
-            if not test_text or test_text.strip() == "":
-                st.error("❌ 请输入要摘要的文本")
-            elif not reference_summary or reference_summary.strip() == "":
-                st.error("❌ 请输入参考摘要，用于计算ROUGE分数")
+            valid_cases = [c for c in test_cases if c["text"].strip() and c["expected"].strip()]
+            if not valid_cases:
+                st.error("❌ 请至少提供一条完整的测试样本（原文与参考摘要）")
             else:
                 with st.spinner("⏳ 正在生成摘要..."):
                     try:
-                        # 替换占位符
-                        prompt_with_text = result.final_prompt.replace("{{text}}", test_text)
-                        prompt_with_text = prompt_with_text.replace("{text}", test_text)
-                        prompt_with_text = prompt_with_text.replace("[待摘要文本]", test_text)
-                        
-                        # 调用 LLM
-                        response = self.optimizer.llm.invoke(prompt_with_text)
-                        summary = response.content.strip()
-                        
-                        # 计算 ROUGE 分数
                         from metrics import MetricsCalculator
                         calc = MetricsCalculator()
-                        rouge_scores = calc.calculate_rouge(summary, reference_summary, lang="zh")
-                        
-                        # 保存结果
-                        st.session_state.sum_validation_result = {
-                            "original": test_text,
-                            "summary": summary,
-                            "reference": reference_summary,
-                            "rouge_scores": rouge_scores,
-                            "compression_ratio": len(summary) / len(test_text) * 100
+
+                        results = []
+                        for case in valid_cases:
+                            prompt_with_text = result.final_prompt.replace("{{text}}", case["text"])
+                            prompt_with_text = prompt_with_text.replace("{text}", case["text"])
+                            prompt_with_text = prompt_with_text.replace("[待摘要文本]", case["text"])
+
+                            response = self.optimizer.llm.invoke(prompt_with_text)
+                            summary = response.content.strip()
+
+                            rouge_scores = calc.calculate_rouge(summary, case["expected"], lang="zh")
+
+                            results.append({
+                                "original": case["text"],
+                                "summary": summary,
+                                "reference": case["expected"],
+                                "rouge_scores": rouge_scores,
+                                "compression_ratio": len(summary) / len(case["text"]) * 100
+                            })
+
+                        st.session_state.sum_validation_results = results
+
+                        avg_rouge1 = sum(r["rouge_scores"]["rouge1"] for r in results) / len(results)
+                        avg_rouge2 = sum(r["rouge_scores"]["rouge2"] for r in results) / len(results)
+                        avg_rougeL = sum(r["rouge_scores"]["rougeL"] for r in results) / len(results)
+                        st.session_state.sum_avg_rouge = {
+                            "rouge1": avg_rouge1,
+                            "rouge2": avg_rouge2,
+                            "rougeL": avg_rougeL
                         }
-                        
+
                     except Exception as e:
                         st.error(f"❌ 生成摘要失败：{str(e)}")
         
         # 显示验证结果
-        if 'sum_validation_result' in st.session_state and st.session_state.sum_validation_result:
-            result_data = st.session_state.sum_validation_result
-            
+        if 'sum_validation_results' in st.session_state and st.session_state.sum_validation_results:
+            results = st.session_state.sum_validation_results
+            avg_scores = st.session_state.get('sum_avg_rouge', {"rouge1": 0, "rouge2": 0, "rougeL": 0})
+
             st.divider()
             st.markdown("### 📊 摘要结果")
-            
-            # 显示ROUGE分数和评级
-            rouge_scores = result_data["rouge_scores"]
-            avg_rouge = (rouge_scores['rouge1'] + rouge_scores['rouge2'] + rouge_scores['rougeL']) / 3
-            
-            # 根据平均ROUGE分数显示评级
+
+            avg_rouge = (avg_scores['rouge1'] + avg_scores['rouge2'] + avg_scores['rougeL']) / 3
+
             if avg_rouge >= 50:
                 st.success(f"🎉 平均 ROUGE 分数：{avg_rouge:.2f}% - 🟢 优秀！")
             elif avg_rouge >= 30:
                 st.info(f"👍 平均 ROUGE 分数：{avg_rouge:.2f}% - 🟡 良好")
             else:
                 st.warning(f"⚠️ 平均 ROUGE 分数：{avg_rouge:.2f}% - 🔴 需改进")
-            
-            # 详细ROUGE分数
+
             col_r1, col_r2, col_r3 = st.columns(3)
             with col_r1:
-                st.metric("ROUGE-1", f"{rouge_scores['rouge1']:.2f}%", help="单词重叠率")
+                st.metric("ROUGE-1", f"{avg_scores['rouge1']:.2f}%", help="单词重叠率")
             with col_r2:
-                st.metric("ROUGE-2", f"{rouge_scores['rouge2']:.2f}%", help="双词组重叠率")
+                st.metric("ROUGE-2", f"{avg_scores['rouge2']:.2f}%", help="双词组重叠率")
             with col_r3:
-                st.metric("ROUGE-L", f"{rouge_scores['rougeL']:.2f}%", help="最长公共子序列")
-            
-            st.divider()
-            
-            col_result1, col_result2, col_result3 = st.columns([1, 1, 1])
-            
-            with col_result1:
-                st.markdown("**📄 原文**")
-                st.text_area(
-                    "原文",
-                    value=result_data["original"],
-                    height=150,
-                    label_visibility="collapsed",
-                    disabled=True
-                )
-            
-            with col_result2:
-                st.markdown("**✨ AI生成的摘要**")
-                st.text_area(
-                    "AI摘要",
-                    value=result_data["summary"],
-                    height=150,
-                    label_visibility="collapsed"
-                )
-            
-            with col_result3:
-                st.markdown("**📌 参考摘要**")
-                st.text_area(
-                    "参考摘要",
-                    value=result_data["reference"],
-                    height=150,
-                    label_visibility="collapsed",
-                    disabled=True
-                )
-            
-            # 统计信息
-            st.markdown("**📈 统计信息**")
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            with stat_col1:
-                st.metric("原文字数", len(result_data["original"]))
-            with stat_col2:
-                st.metric("摘要字数", len(result_data["summary"]))
-            with stat_col3:
-                st.metric("压缩率", f"{result_data['compression_ratio']:.1f}%")
-            
+                st.metric("ROUGE-L", f"{avg_scores['rougeL']:.2f}%", help="最长公共子序列")
+
+            for i, r in enumerate(results, 1):
+                with st.expander(f"测试 {i} 结果", expanded=(i == 1)):
+                    col_result1, col_result2, col_result3 = st.columns([1, 1, 1])
+
+                    with col_result1:
+                        st.markdown("**📄 原文**")
+                        st.text_area(
+                            f"原文_{i}",
+                            value=r["original"],
+                            height=150,
+                            label_visibility="collapsed",
+                            disabled=True
+                        )
+
+                    with col_result2:
+                        st.markdown("**✨ AI生成的摘要**")
+                        st.text_area(
+                            f"AI摘要_{i}",
+                            value=r["summary"],
+                            height=150,
+                            label_visibility="collapsed"
+                        )
+
+                    with col_result3:
+                        st.markdown("**📌 参考摘要**")
+                        st.text_area(
+                            f"参考摘要_{i}",
+                            value=r["reference"],
+                            height=150,
+                            label_visibility="collapsed",
+                            disabled=True
+                        )
+
+                    st.markdown("**📈 统计信息**")
+                    stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+                    with stat_col1:
+                        st.metric("原文字数", len(r["original"]))
+                    with stat_col2:
+                        st.metric("摘要字数", len(r["summary"]))
+                    with stat_col3:
+                        st.metric("压缩率", f"{r['compression_ratio']:.1f}%")
+                    with stat_col4:
+                        r_avg = (r["rouge_scores"]["rouge1"] + r["rouge_scores"]["rouge2"] + r["rouge_scores"]["rougeL"]) / 3
+                        st.metric("该样本ROUGE均值", f"{r_avg:.2f}%")
+
             st.markdown("**💡 人工评估建议**")
             st.caption("ROUGE 分数是自动化指标，建议结合人工评估判断摘要质量（完整性、准确性、简洁性、可读性）")
+
+    def _render_csv_upload(self):
+        """渲染CSV文件上传界面"""
+        st.markdown("**📁 CSV文件上传**")
+        st.info("CSV文件应包含两列：'text'（原文）和 'expected'（参考摘要）")
+
+        uploaded_file = st.file_uploader(
+            "选择CSV文件",
+            type=["csv"],
+            key="sum_csv_upload",
+            help="上传包含摘要测试数据的CSV文件"
+        )
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                required_columns = ["text", "expected"]
+                if not all(col in df.columns for col in required_columns):
+                    st.error(f"❌ CSV文件必须包含以下列：{', '.join(required_columns)}")
+                    return
+
+                st.success(f"✅ 成功加载 {len(df)} 条测试数据")
+                st.markdown("**数据预览：**")
+                st.dataframe(df.head(), use_container_width=True)
+
+                st.session_state.sum_custom_test_data = df.to_dict('records')
+
+            except Exception as e:
+                st.error(f"❌ 文件读取失败：{str(e)}")
+
+    def _render_manual_input(self):
+        """渲染手动输入界面"""
+        st.markdown("**✏️ 手动输入测试数据**")
+
+        manual_data = st.session_state.get('sum_manual_test_data', [
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""}
+        ])
+
+        st.markdown("添加测试样本：")
+
+        updated_data = []
+        for i, item in enumerate(manual_data):
+            col1, col2, col3 = st.columns([4, 4, 1])
+            with col1:
+                text = st.text_area(
+                    f"原文 {i+1}",
+                    value=item["text"],
+                    key=f"sum_manual_text_{i}",
+                    height=100,
+                    placeholder="输入待摘要原文"
+                )
+            with col2:
+                expected = st.text_area(
+                    f"参考摘要 {i+1}",
+                    value=item["expected"],
+                    key=f"sum_manual_expected_{i}",
+                    height=100,
+                    placeholder="输入参考摘要"
+                )
+            with col3:
+                if st.button("🗑️", key=f"sum_delete_{i}", help=f"删除第{i+1}行"):
+                    continue
+
+            if text.strip() or expected.strip():
+                updated_data.append({"text": text, "expected": expected})
+
+        if st.button("➕ 添加一行", key="sum_add_manual_row"):
+            updated_data.append({"text": "", "expected": ""})
+
+        st.session_state.sum_manual_test_data = updated_data
+
+        valid_count = sum(1 for item in updated_data if item["text"].strip() and item["expected"].strip())
+        st.info(f"当前有 {valid_count} 条有效测试数据")
+
+    def _get_test_cases(self):
+        """获取测试数据，根据用户选择返回相应数据"""
+        data_source = st.session_state.get('sum_data_source', '使用默认数据')
+
+        if data_source == "使用默认数据":
+            if 'sum_custom_test_data' in st.session_state:
+                del st.session_state.sum_custom_test_data
+            if 'sum_manual_test_data' in st.session_state:
+                del st.session_state.sum_manual_test_data
+            return get_default_lab_dataset("summarization")
+
+        elif data_source == "上传CSV文件":
+            if 'sum_custom_test_data' in st.session_state and st.session_state.sum_custom_test_data:
+                return st.session_state.sum_custom_test_data
+            else:
+                return get_default_lab_dataset("summarization")
+
+        elif data_source == "手动输入":
+            if 'sum_manual_test_data' in st.session_state:
+                manual_data = [item for item in st.session_state.sum_manual_test_data
+                              if item["text"].strip() and item["expected"].strip()]
+                if manual_data:
+                    return manual_data
+            return get_default_lab_dataset("summarization")
+
+        return get_default_lab_dataset("summarization")
     
     def _validate_api_key(self):
         """验证 API Key"""

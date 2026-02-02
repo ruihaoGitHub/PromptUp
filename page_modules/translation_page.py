@@ -3,8 +3,10 @@
 提供翻译器 Prompt 生成和优化功能
 """
 import streamlit as st
+import pandas as pd
 import re
 from .base_page import BasePage
+from config.defaults import get_default_value, get_placeholder, get_default_lab_dataset
 
 
 class TranslationPage(BasePage):
@@ -36,6 +38,15 @@ class TranslationPage(BasePage):
                     help="翻译后的目标语言"
                 )
             
+            # 任务描述
+            task_description = st.text_area(
+                "任务描述",
+                height=80,
+                placeholder=get_placeholder("translation", "task_description"),
+                help="清晰描述翻译任务的要求和目标。",
+                key="trans_task_desc"
+            )
+            
             # 领域选择
             st.markdown("**📚 应用领域**")
             domain = st.selectbox(
@@ -52,7 +63,33 @@ class TranslationPage(BasePage):
                     "营销文案",
                     "游戏本地化"
                 ],
-                index=2,
+                index=max(
+                    0,
+                    [
+                        "通用日常",
+                        "IT/技术文档",
+                        "法律合同",
+                        "学术论文",
+                        "商务邮件",
+                        "文学/小说",
+                        "医学文档",
+                        "新闻报道",
+                        "营销文案",
+                        "游戏本地化"
+                    ].index(get_default_value("translation", "domain"))
+                    if get_default_value("translation", "domain") in [
+                        "通用日常",
+                        "IT/技术文档",
+                        "法律合同",
+                        "学术论文",
+                        "商务邮件",
+                        "文学/小说",
+                        "医学文档",
+                        "新闻报道",
+                        "营销文案",
+                        "游戏本地化"
+                    ] else 0
+                ),
                 help="不同领域需要不同的专业术语和表达风格"
             )
             
@@ -68,7 +105,25 @@ class TranslationPage(BasePage):
                     "正式/商务",
                     "轻松/活泼"
                 ],
-                index=4,
+                index=max(
+                    0,
+                    [
+                        "标准/准确",
+                        "地道/口语化",
+                        "优美/文学性",
+                        "极简/摘要式",
+                        "正式/商务",
+                        "轻松/活泼"
+                    ].index(get_default_value("translation", "tone"))
+                    if get_default_value("translation", "tone") in [
+                        "标准/准确",
+                        "地道/口语化",
+                        "优美/文学性",
+                        "极简/摘要式",
+                        "正式/商务",
+                        "轻松/活泼"
+                    ] else 0
+                ),
                 help="决定译文的表达方式和语言风格"
             )
             
@@ -98,6 +153,18 @@ Governing Law=适用法律
             elif not self._validate_api_key():
                 return
             else:
+                # 如果用户没有输入任务描述，使用默认值
+                if not task_description or task_description.strip() == "":
+                    task_description = get_default_value("translation", "task_description")
+                    st.info("💡 未输入任务描述，使用默认示例")
+                
+                # 保存用户输入的任务描述到 session_state，供随机搜索使用
+                st.session_state.user_task_description_translation = task_description
+                st.session_state.translation_source_lang = source_lang
+                st.session_state.translation_target_lang = target_lang
+                st.session_state.translation_domain = domain
+                st.session_state.translation_tone = tone
+                
                 # 处理术语表输入，使用默认值
                 if not glossary_input or glossary_input.strip() == "":
                     # 根据选择的领域提供默认术语
@@ -196,40 +263,51 @@ Machine Learning=机器学习"""
         """渲染翻译验证实验室"""
         st.divider()
         st.subheader("🔬 效果验证实验室")
-        st.markdown("*使用示例文本测试翻译质量*")
-        
-        # 默认测试文本（根据语言方向）
+        st.markdown("*使用测试样本验证翻译质量*")
+
         source_lang = st.session_state.get('source_lang', '中文')
         target_lang = st.session_state.get('target_lang', '英文')
-        
-        if source_lang == "英文" and target_lang == "中文":
-            default_text = """Notwithstanding any provision to the contrary, neither party shall be liable for any delay in performance or failure to perform this Agreement where such delay or failure is due to a Force Majeure event; provided that the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses."""
-            default_reference = """尽管有任何相反约定，若因不可抗力事件导致履行延迟或未能履行本协议，任何一方均不承担责任；但受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。"""
-        elif source_lang == "中文" and target_lang == "英文":
-            default_text = """尽管有任何相反约定，若因不可抗力事件导致履行延迟或未能履行本协议，任何一方均不承担责任；但受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。"""
-            default_reference = """Notwithstanding any provision to the contrary, neither party shall be liable for any delay in performance or failure to perform this Agreement where such delay or failure is due to a Force Majeure event; provided that the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses."""
-        else:
-            default_text = """The company announced a $120 million funding round led by Horizon Capital, valuing the startup at $1.8 billion. The funds will be used to expand its data centers in Asia."""
-            default_reference = """该公司宣布由 Horizon Capital 领投的 1.2 亿美元融资轮，使这家初创公司估值达到 18 亿美元。资金将用于扩大其在亚洲的数据中心。"""
+
+        # 测试数据来源选择
+        st.markdown("**📊 测试数据来源**")
+        data_source = st.radio(
+            "选择数据来源",
+            ["使用默认数据", "上传CSV文件", "手动输入"],
+            key="trans_data_source",
+            help="选择测试数据的来源方式",
+            horizontal=True
+        )
+
+        # 根据选择显示相应的输入界面
+        if data_source == "上传CSV文件":
+            self._render_csv_upload()
+        elif data_source == "手动输入":
+            self._render_manual_input()
+
+        test_cases = self._get_test_cases(source_lang, target_lang)
         
         col_test1, col_test2 = st.columns([1, 1])
         
         with col_test1:
-            st.markdown(f"**📄 {source_lang}原文**")
-            test_text = st.text_area(
-                "输入要翻译的文本",
-                value=default_text,
-                height=150,
-                key="trans_test_text"
-            )
-            
-            st.markdown(f"**📌 参考译文（用于计算BLEU分数）**")
-            reference_translation = st.text_area(
-                "输入人工翻译的参考译文",
-                value=default_reference,
-                height=100,
-                key="trans_reference"
-            )
+            st.markdown(f"**📄 测试样本（{source_lang}原文 / {target_lang}参考译文）**")
+            st.caption("修改下方的测试文本和参考译文：")
+
+            for i, case in enumerate(test_cases):
+                with st.container():
+                    st.markdown(f"**测试 {i+1}:**")
+                    text = st.text_area(
+                        f"原文 {i+1}",
+                        value=case["text"],
+                        height=120,
+                        key=f"trans_test_text_{i}"
+                    )
+                    expected = st.text_area(
+                        f"参考译文 {i+1}",
+                        value=case["expected"],
+                        height=100,
+                        key=f"trans_test_expected_{i}"
+                    )
+                    test_cases[i] = {"text": text, "expected": expected}
         
         with col_test2:
             st.markdown("**🎯 评分标准**")
@@ -250,103 +328,213 @@ Machine Learning=机器学习"""
         
         # 运行验证按钮
         if st.button("🚀 执行翻译", type="primary", use_container_width=True, key="trans_validation_btn"):
-            if not test_text or test_text.strip() == "":
-                st.error("❌ 请输入要翻译的文本")
-            elif not reference_translation or reference_translation.strip() == "":
-                st.error("❌ 请输入参考译文，用于计算BLEU分数")
+            valid_cases = [c for c in test_cases if c["text"].strip() and c["expected"].strip()]
+            if not valid_cases:
+                st.error("❌ 请至少提供一条完整的测试样本（原文与参考译文）")
             else:
                 with st.spinner(f"⏳ 正在从{source_lang}翻译到{target_lang}..."):
                     try:
-                        # 替换占位符
-                        prompt_with_text = result.final_prompt
-                        prompt_with_text = re.sub(r"\{\{\s*text\s*\}\}", test_text, prompt_with_text)
-                        prompt_with_text = re.sub(r"\{\{\{\s*text\s*\}\}\}", test_text, prompt_with_text)
-                        prompt_with_text = re.sub(r"\{\s*text\s*\}", test_text, prompt_with_text)
-                        prompt_with_text = prompt_with_text.replace("[待翻译文本]", test_text)
-                        prompt_with_text = prompt_with_text.replace("【待翻译文本】", test_text)
-                        prompt_with_text = prompt_with_text.replace("<text>", test_text)
-                        
-                        # 强制输出仅包含目标语言译文
-                        strict_prefix = f"【输出要求】只输出{target_lang}译文，不要解释、不要原文、不要双语对照。\n"
-                        prompt_with_text = strict_prefix + prompt_with_text
-                        
-                        # 调用 LLM
-                        response = self.optimizer.llm.invoke(prompt_with_text)
-                        translation = response.content.strip()
-                        
-                        # 计算 BLEU 分数
                         from metrics import MetricsCalculator
                         calc = MetricsCalculator()
-                        # 根据目标语言选择分词方式
                         lang = "zh" if target_lang == "中文" else "en"
-                        bleu_score = calc.calculate_bleu(translation, reference_translation, lang=lang)
-                        
-                        # 保存结果
-                        st.session_state.trans_validation_result = {
-                            "original": test_text,
-                            "translation": translation,
-                            "reference": reference_translation,
-                            "bleu_score": bleu_score,
-                            "source_lang": source_lang,
-                            "target_lang": target_lang
-                        }
-                        
+
+                        results = []
+                        for case in valid_cases:
+                            prompt_with_text = result.final_prompt
+                            prompt_with_text = re.sub(r"\{\{\s*text\s*\}\}", case["text"], prompt_with_text)
+                            prompt_with_text = re.sub(r"\{\{\{\s*text\s*\}\}\}", case["text"], prompt_with_text)
+                            prompt_with_text = re.sub(r"\{\s*text\s*\}", case["text"], prompt_with_text)
+                            prompt_with_text = prompt_with_text.replace("[待翻译文本]", case["text"])
+                            prompt_with_text = prompt_with_text.replace("【待翻译文本】", case["text"])
+                            prompt_with_text = prompt_with_text.replace("<text>", case["text"])
+
+                            strict_prefix = f"【输出要求】只输出{target_lang}译文，不要解释、不要原文、不要双语对照。\n"
+                            prompt_with_text = strict_prefix + prompt_with_text
+
+                            response = self.optimizer.llm.invoke(prompt_with_text)
+                            translation = response.content.strip()
+
+                            bleu_score = calc.calculate_bleu(translation, case["expected"], lang=lang)
+
+                            results.append({
+                                "original": case["text"],
+                                "translation": translation,
+                                "reference": case["expected"],
+                                "bleu_score": bleu_score,
+                                "source_lang": source_lang,
+                                "target_lang": target_lang
+                            })
+
+                        st.session_state.trans_validation_results = results
+                        st.session_state.trans_avg_bleu = sum(r["bleu_score"] for r in results) / len(results)
+
                     except Exception as e:
                         st.error(f"❌ 翻译失败：{str(e)}")
         
         # 显示验证结果
-        if 'trans_validation_result' in st.session_state and st.session_state.trans_validation_result:
-            result_data = st.session_state.trans_validation_result
-            
+        if 'trans_validation_results' in st.session_state and st.session_state.trans_validation_results:
+            results = st.session_state.trans_validation_results
+            avg_bleu = st.session_state.get('trans_avg_bleu', 0)
+
             st.divider()
             st.markdown("### 📊 翻译结果")
-            
-            # 显示BLEU分数和评级
-            bleu_score = result_data["bleu_score"]
-            
-            # 根据BLEU分数显示评级
-            if bleu_score >= 40:
-                st.success(f"🎉 BLEU 分数：{bleu_score:.2f}% - 🟢 优秀！")
-            elif bleu_score >= 20:
-                st.info(f"👍 BLEU 分数：{bleu_score:.2f}% - 🟡 良好")
+
+            if avg_bleu >= 40:
+                st.success(f"🎉 平均 BLEU 分数：{avg_bleu:.2f}% - 🟢 优秀！")
+            elif avg_bleu >= 20:
+                st.info(f"👍 平均 BLEU 分数：{avg_bleu:.2f}% - 🟡 良好")
             else:
-                st.warning(f"⚠️ BLEU 分数：{bleu_score:.2f}% - 🔴 需改进")
-            
-            st.divider()
-            
-            col_result1, col_result2, col_result3 = st.columns(3)
-            
-            with col_result1:
-                st.markdown(f"**📄 {result_data['source_lang']}原文**")
-                st.text_area(
-                    "原文",
-                    value=result_data["original"],
-                    height=200,
-                    label_visibility="collapsed",
-                    disabled=True
-                )
-            
-            with col_result2:
-                st.markdown(f"**✨ AI翻译的{result_data['target_lang']}译文**")
-                st.text_area(
-                    "AI译文",
-                    value=result_data["translation"],
-                    height=200,
-                    label_visibility="collapsed"
-                )
-            
-            with col_result3:
-                st.markdown(f"**📌 参考{result_data['target_lang']}译文**")
-                st.text_area(
-                    "参考译文",
-                    value=result_data["reference"],
-                    height=200,
-                    label_visibility="collapsed",
-                    disabled=True
-                )
-            
+                st.warning(f"⚠️ 平均 BLEU 分数：{avg_bleu:.2f}% - 🔴 需改进")
+
+            for i, r in enumerate(results, 1):
+                with st.expander(f"测试 {i} 结果", expanded=(i == 1)):
+                    col_result1, col_result2, col_result3 = st.columns(3)
+
+                    with col_result1:
+                        st.markdown(f"**📄 {r['source_lang']}原文**")
+                        st.text_area(
+                            f"原文_{i}",
+                            value=r["original"],
+                            height=200,
+                            label_visibility="collapsed",
+                            disabled=True
+                        )
+
+                    with col_result2:
+                        st.markdown(f"**✨ AI翻译的{r['target_lang']}译文**")
+                        st.text_area(
+                            f"AI译文_{i}",
+                            value=r["translation"],
+                            height=200,
+                            label_visibility="collapsed"
+                        )
+
+                    with col_result3:
+                        st.markdown(f"**📌 参考{r['target_lang']}译文**")
+                        st.text_area(
+                            f"参考译文_{i}",
+                            value=r["reference"],
+                            height=200,
+                            label_visibility="collapsed",
+                            disabled=True
+                        )
+
+                    st.metric("该样本 BLEU", f"{r['bleu_score']:.2f}%")
+
             st.markdown("**💡 人工评估建议**")
             st.caption("BLEU 分数是自动化指标，建议结合人工评估判断翻译质量（准确性、流畅性、术语一致性）")
+
+    def _render_csv_upload(self):
+        """渲染CSV文件上传界面"""
+        st.markdown("**📁 CSV文件上传**")
+        st.info("CSV文件应包含两列：'text'（原文）和 'expected'（参考译文）")
+
+        uploaded_file = st.file_uploader(
+            "选择CSV文件",
+            type=["csv"],
+            key="trans_csv_upload",
+            help="上传包含翻译测试数据的CSV文件"
+        )
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                required_columns = ["text", "expected"]
+                if not all(col in df.columns for col in required_columns):
+                    st.error(f"❌ CSV文件必须包含以下列：{', '.join(required_columns)}")
+                    return
+
+                st.success(f"✅ 成功加载 {len(df)} 条测试数据")
+                st.markdown("**数据预览：**")
+                st.dataframe(df.head(), use_container_width=True)
+
+                st.session_state.trans_custom_test_data = df.to_dict('records')
+
+            except Exception as e:
+                st.error(f"❌ 文件读取失败：{str(e)}")
+
+    def _render_manual_input(self):
+        """渲染手动输入界面"""
+        st.markdown("**✏️ 手动输入测试数据**")
+
+        manual_data = st.session_state.get('trans_manual_test_data', [
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""}
+        ])
+
+        st.markdown("添加测试样本：")
+
+        updated_data = []
+        for i, item in enumerate(manual_data):
+            col1, col2, col3 = st.columns([4, 4, 1])
+            with col1:
+                text = st.text_area(
+                    f"原文 {i+1}",
+                    value=item["text"],
+                    key=f"trans_manual_text_{i}",
+                    height=100,
+                    placeholder="输入待翻译原文"
+                )
+            with col2:
+                expected = st.text_area(
+                    f"参考译文 {i+1}",
+                    value=item["expected"],
+                    key=f"trans_manual_expected_{i}",
+                    height=100,
+                    placeholder="输入参考译文"
+                )
+            with col3:
+                if st.button("🗑️", key=f"trans_delete_{i}", help=f"删除第{i+1}行"):
+                    continue
+
+            if text.strip() or expected.strip():
+                updated_data.append({"text": text, "expected": expected})
+
+        if st.button("➕ 添加一行", key="trans_add_manual_row"):
+            updated_data.append({"text": "", "expected": ""})
+
+        st.session_state.trans_manual_test_data = updated_data
+
+        valid_count = sum(1 for item in updated_data if item["text"].strip() and item["expected"].strip())
+        st.info(f"当前有 {valid_count} 条有效测试数据")
+
+    def _get_test_cases(self, source_lang: str, target_lang: str):
+        """获取测试数据，根据用户选择返回相应数据"""
+        data_source = st.session_state.get('trans_data_source', '使用默认数据')
+
+        default_cases = get_default_lab_dataset("translation")
+        filtered_default = [
+            {"text": c["text"], "expected": c["expected"]}
+            for c in default_cases
+            if c.get("source_lang") == source_lang and c.get("target_lang") == target_lang
+        ]
+        default_result = filtered_default if filtered_default else [
+            {"text": c["text"], "expected": c["expected"]} for c in default_cases
+        ]
+
+        if data_source == "使用默认数据":
+            if 'trans_custom_test_data' in st.session_state:
+                del st.session_state.trans_custom_test_data
+            if 'trans_manual_test_data' in st.session_state:
+                del st.session_state.trans_manual_test_data
+            return default_result
+
+        elif data_source == "上传CSV文件":
+            if 'trans_custom_test_data' in st.session_state and st.session_state.trans_custom_test_data:
+                return st.session_state.trans_custom_test_data
+            else:
+                return default_result
+
+        elif data_source == "手动输入":
+            if 'trans_manual_test_data' in st.session_state:
+                manual_data = [item for item in st.session_state.trans_manual_test_data
+                              if item["text"].strip() and item["expected"].strip()]
+                if manual_data:
+                    return manual_data
+            return default_result
+
+        return default_result
     
     def _validate_api_key(self):
         """验证 API Key"""

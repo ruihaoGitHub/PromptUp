@@ -27,7 +27,6 @@
 
 - **`ClassificationPrompt`**: 分类任务优化结果
   - `role_definition`: 角色设定
-  - `label_definitions`: 标签定义字典
   - `few_shot_examples`: Few-shot 示例
   - `reasoning_guidance`: 推理引导
   - `output_format`: 输出格式要求
