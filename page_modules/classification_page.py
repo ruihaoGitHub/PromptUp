@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import io
 from .base_page import BasePage
-from config.defaults import get_default_value, get_placeholder, get_default_lab_dataset
+from config.defaults import get_default_value, get_placeholder, get_default_lab_dataset, get_default_dataset
 
 
 class ClassificationPage(BasePage):
@@ -111,6 +111,372 @@ class ClassificationPage(BasePage):
         # 验证实验室区域
         if 'classification_result' in st.session_state and st.session_state.classification_result:
             self._render_validation_lab(st.session_state.classification_result)
+
+        self._render_optimization_lab()
+
+    def _render_optimization_lab(self):
+        """渲染分类任务优化实验室（随机搜索/遗传算法）"""
+        st.divider()
+        st.subheader("🧬 提示词优化（随机搜索 / 贝叶斯优化 / 遗传算法）")
+        st.markdown("*通过搜索/进化采样角色/风格/技巧组合，在小型测试集上寻找更优 Prompt 结构*" )
+
+        optimization_algorithm = st.radio(
+            "选择优化算法",
+            ["随机搜索", "贝叶斯优化", "遗传算法"],
+            key="cls_opt_algorithm",
+            help="随机搜索适合快速体验，遗传算法适合更系统的优化",
+            horizontal=True
+        )
+
+        st.markdown("**📊 优化数据来源**")
+        data_source = st.radio(
+            "选择优化使用的数据来源",
+            ["使用默认数据", "上传CSV文件", "手动输入"],
+            key="cls_opt_data_source",
+            help="选择用于优化的测试数据来源",
+            horizontal=True
+        )
+
+        if data_source == "上传CSV文件":
+            self._render_opt_csv_upload()
+        elif data_source == "手动输入":
+            self._render_opt_manual_input()
+
+        task_desc, task_key, dataset, extra_config = self._get_optimization_config()
+
+        if optimization_algorithm == "随机搜索":
+            col_a, col_b = st.columns([1, 2])
+            with col_a:
+                iterations = st.slider("迭代次数", min_value=5, max_value=50, value=12, step=1, key="cls_opt_iterations")
+            with col_b:
+                st.caption("建议：快速体验 5-10 次；有效优化 20-50 次（成本更高）。")
+
+            if st.button("🚀 运行随机搜索", type="primary", use_container_width=True, key="cls_opt_random_btn"):
+                with st.spinner("⏳ 正在生成搜索空间并执行随机搜索..."):
+                    try:
+                        search_space = self.optimizer.search_space_generator.generate(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            **extra_config
+                        )
+
+                        st.success("✅ 搜索空间生成完成！")
+                        st.info("💡 系统将从这些选项中随机组合进行测试，每个组合包含：1个角色 + 1种风格 + 1种技巧")
+                        self._render_search_space_preview(search_space)
+
+                        results, best = self.optimizer.random_search.run(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            test_dataset=dataset,
+                            search_space=search_space,
+                            iterations=iterations,
+                            labels=extra_config.get("labels")
+                        )
+
+                        st.session_state.cls_opt_random_results = results
+                        st.session_state.cls_opt_random_best = best
+                        st.session_state.cls_opt_random_space = search_space
+                    except Exception as e:
+                        st.error(f"❌ 随机搜索失败：{str(e)}")
+
+            if 'cls_opt_random_best' in st.session_state and st.session_state.cls_opt_random_best:
+                best = st.session_state.cls_opt_random_best
+                search_space = st.session_state.get('cls_opt_random_space')
+                results = st.session_state.get('cls_opt_random_results', [])
+                # 新增：随机搜索得分曲线
+                if results:
+                    st.divider()
+                    st.markdown("### 📈 随机搜索得分曲线")
+                    df = pd.DataFrame({
+                        "迭代": [r.iteration_id for r in results],
+                        "得分": [r.avg_score for r in results]
+                    })
+                    st.line_chart(df.set_index("迭代"))
+                self._render_optimization_result(best, search_space)
+        elif optimization_algorithm == "遗传算法":
+            col_a, col_b, col_c, col_d = st.columns(4)
+            with col_a:
+                generations = st.slider("进化代数", min_value=3, max_value=20, value=6, step=1, key="cls_opt_generations")
+            with col_b:
+                population_size = st.slider("种群规模", min_value=4, max_value=24, value=8, step=1, key="cls_opt_population")
+            with col_c:
+                elite_ratio = st.slider("精英比例", min_value=0.1, max_value=0.5, value=0.2, step=0.05, key="cls_opt_elite")
+            with col_d:
+                mutation_rate = st.slider("变异率", min_value=0.05, max_value=0.6, value=0.2, step=0.05, key="cls_opt_mutation")
+
+            if st.button("🧬 运行遗传算法", type="primary", use_container_width=True, key="cls_opt_ga_btn"):
+                with st.spinner("⏳ 正在生成搜索空间并执行遗传算法..."):
+                    try:
+                        search_space = self.optimizer.search_space_generator.generate(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            **extra_config
+                        )
+
+                        st.success("✅ 搜索空间生成完成！")
+                        st.info("💡 系统将从这些选项中进化组合进行测试，每个组合包含：1个角色 + 1种风格 + 1种技巧")
+                        self._render_search_space_preview(search_space)
+
+                        progress = st.progress(0)
+                        progress_text = st.empty()
+
+                        def _progress_callback(current_gen, total_gen, best_score, avg_score):
+                            if total_gen > 0:
+                                progress_value = int(min(100, (current_gen / total_gen) * 100))
+                                progress.progress(progress_value)
+                            progress_text.info(
+                                f"第 {current_gen}/{total_gen} 代 | 最佳得分 {best_score:.2f} | 平均得分 {avg_score:.2f}"
+                            )
+
+                        results, best, evolution_history = self.optimizer.run_genetic_algorithm(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            test_dataset=dataset,
+                            search_space=search_space,
+                            generations=generations,
+                            population_size=population_size,
+                            elite_ratio=elite_ratio,
+                            mutation_rate=mutation_rate,
+                            progress_callback=_progress_callback
+                        )
+
+                        st.session_state.cls_opt_ga_results = results
+                        st.session_state.cls_opt_ga_best = best
+                        st.session_state.cls_opt_ga_history = evolution_history
+                        st.session_state.cls_opt_ga_space = search_space
+                    except Exception as e:
+                        st.error(f"❌ 遗传算法失败：{str(e)}")
+
+            if 'cls_opt_ga_best' in st.session_state and st.session_state.cls_opt_ga_best:
+                best = st.session_state.cls_opt_ga_best
+                search_space = st.session_state.get('cls_opt_ga_space')
+                evolution_history = st.session_state.get('cls_opt_ga_history', [])
+                self._render_optimization_result(best, search_space, evolution_history)
+        else:
+            col_a, col_b = st.columns([1, 2])
+            with col_a:
+                n_trials = st.slider("试验次数", min_value=5, max_value=50, value=12, step=1, key="cls_opt_bo_trials")
+            with col_b:
+                st.caption("建议：快速体验 8-12 次；稳定优化 15-30 次（成本更高）。")
+
+            if st.button("🧪 运行贝叶斯优化", type="primary", use_container_width=True, key="cls_opt_bo_btn"):
+                with st.spinner("⏳ 正在生成搜索空间并执行贝叶斯优化..."):
+                    try:
+                        search_space = self.optimizer.search_space_generator.generate(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            **extra_config
+                        )
+
+                        st.success("✅ 搜索空间生成完成！")
+                        st.info("💡 系统将使用 TPE 智能选择组合进行测试，每个组合包含：1个角色 + 1种风格 + 1种技巧")
+                        self._render_search_space_preview(search_space)
+
+                        progress = st.progress(0)
+                        progress_text = st.empty()
+
+                        def _progress_callback(current_trial, total_trials, best_score):
+                            if total_trials > 0:
+                                progress_value = int(min(100, (current_trial / total_trials) * 100))
+                                progress.progress(progress_value)
+                            progress_text.info(
+                                f"试验 {current_trial}/{total_trials} | 当前最佳 {best_score:.2f}"
+                            )
+
+                        results, best, trial_history = self.optimizer.run_bayesian_optimization(
+                            task_description=task_desc,
+                            task_type=task_key,
+                            test_dataset=dataset,
+                            search_space=search_space,
+                            n_trials=n_trials,
+                            progress_callback=_progress_callback
+                        )
+
+                        st.session_state.cls_opt_bo_results = results
+                        st.session_state.cls_opt_bo_best = best
+                        st.session_state.cls_opt_bo_history = trial_history
+                        st.session_state.cls_opt_bo_space = search_space
+                    except Exception as e:
+                        st.error(f"❌ 贝叶斯优化失败：{str(e)}")
+
+            if 'cls_opt_bo_best' in st.session_state and st.session_state.cls_opt_bo_best:
+                best = st.session_state.cls_opt_bo_best
+                search_space = st.session_state.get('cls_opt_bo_space')
+                trial_history = st.session_state.get('cls_opt_bo_history', [])
+                if trial_history:
+                    st.divider()
+                    st.markdown("### 📈 贝叶斯优化得分曲线")
+                    df = pd.DataFrame({
+                        "试验": [h["trial"] for h in trial_history],
+                        "得分": [h["score"] for h in trial_history],
+                        "历史最佳": [h["best_score"] for h in trial_history]
+                    })
+                    st.line_chart(df.set_index("试验"))
+                self._render_optimization_result(best, search_space)
+
+    def _render_search_space_preview(self, search_space):
+        with st.expander("🔍 查看生成的搜索空间", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("**🎭 角色设定 (5个)**")
+                for i, role in enumerate(search_space.roles, 1):
+                    st.markdown(f"{i}. {role}")
+            with col2:
+                st.markdown("**🎨 回答风格 (5种)**")
+                for i, style in enumerate(search_space.styles, 1):
+                    st.markdown(f"{i}. {style}")
+            with col3:
+                st.markdown("**🛠️ 提示技巧 (3种)**")
+                for i, technique in enumerate(search_space.techniques, 1):
+                    st.markdown(f"{i}. {technique}")
+
+    def _render_optimization_result(self, best, search_space, evolution_history=None):
+        st.success(f"✅ 最佳得分：{best.avg_score:.2f}")
+        st.markdown(f"**最佳组合：** {best.role} + {best.style} + {best.technique}")
+        st.text_area("最佳 Prompt", value=best.full_prompt, height=200)
+
+        if evolution_history:
+            st.divider()
+            st.markdown("### 📈 进化过程")
+            history_df = pd.DataFrame(evolution_history)
+            history_df = history_df.rename(columns={
+                "generation": "代数",
+                "best_score": "最佳得分",
+                "avg_score": "平均得分"
+            })
+            st.line_chart(history_df.set_index("代数")[["最佳得分", "平均得分"]])
+
+        if search_space:
+            st.divider()
+            st.markdown("### 🔍 搜索空间详情")
+            with st.expander("查看完整的搜索空间", expanded=False):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown("**🎭 角色设定 (5个)**")
+                    for i, role in enumerate(search_space.roles, 1):
+                        if role == best.role:
+                            st.markdown(f"**{i}. {role} ← 最佳选择**")
+                        else:
+                            st.markdown(f"{i}. {role}")
+                with col2:
+                    st.markdown("**🎨 回答风格 (5种)**")
+                    for i, style in enumerate(search_space.styles, 1):
+                        if style == best.style:
+                            st.markdown(f"**{i}. {style} ← 最佳选择**")
+                        else:
+                            st.markdown(f"{i}. {style}")
+                with col3:
+                    st.markdown("**🛠️ 提示技巧 (3种)**")
+                    for i, technique in enumerate(search_space.techniques, 1):
+                        if technique == best.technique:
+                            st.markdown(f"**{i}. {technique} ← 最佳选择**")
+                        else:
+                            st.markdown(f"{i}. {technique}")
+
+    def _render_opt_csv_upload(self):
+        st.markdown("**📁 CSV文件上传**")
+        st.info("CSV文件应包含两列：'text'（文本）和 'expected'（预期标签）")
+        uploaded_file = st.file_uploader(
+            "选择CSV文件",
+            type=["csv"],
+            key="cls_opt_csv_upload",
+            help="上传包含测试数据的CSV文件"
+        )
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                required_columns = ["text", "expected"]
+                if not all(col in df.columns for col in required_columns):
+                    st.error(f"❌ CSV文件必须包含以下列：{', '.join(required_columns)}")
+                    return
+                st.success(f"✅ 成功加载 {len(df)} 条测试数据")
+                st.markdown("**数据预览：**")
+                st.dataframe(df.head(), use_container_width=True)
+                st.session_state.cls_opt_custom_data = df.to_dict('records')
+            except Exception as e:
+                st.error(f"❌ 文件读取失败：{str(e)}")
+
+    def _render_opt_manual_input(self):
+        st.markdown("**✏️ 手动输入测试数据**")
+        manual_data = st.session_state.get('cls_opt_manual_data', [
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""},
+            {"text": "", "expected": ""}
+        ])
+
+        updated_data = []
+        for i, item in enumerate(manual_data):
+            col1, col2, col3 = st.columns([4, 2, 1])
+            with col1:
+                text = st.text_input(
+                    f"文本 {i+1}",
+                    value=item["text"],
+                    key=f"cls_opt_manual_text_{i}",
+                    placeholder="输入测试文本"
+                )
+            with col2:
+                expected = st.text_input(
+                    f"标签 {i+1}",
+                    value=item["expected"],
+                    key=f"cls_opt_manual_expected_{i}",
+                    placeholder="预期标签"
+                )
+            with col3:
+                if st.button("🗑️", key=f"cls_opt_manual_delete_{i}", help=f"删除第{i+1}行"):
+                    continue
+
+            if text.strip() or expected.strip():
+                updated_data.append({"text": text, "expected": expected})
+
+        if st.button("➕ 添加一行", key="cls_opt_manual_add_row"):
+            updated_data.append({"text": "", "expected": ""})
+
+        st.session_state.cls_opt_manual_data = updated_data
+        valid_count = sum(1 for item in updated_data if item["text"].strip() and item["expected"].strip())
+        st.info(f"当前有 {valid_count} 条有效测试数据用于优化")
+
+    def _get_opt_test_dataset(self):
+        data_source = st.session_state.get('cls_opt_data_source', '使用默认数据')
+
+        if data_source == "使用默认数据":
+            return get_default_dataset("classification")
+
+        if data_source == "上传CSV文件":
+            if st.session_state.get('cls_opt_custom_data'):
+                return [
+                    {"input": item["text"], "ground_truth": item["expected"]}
+                    for item in st.session_state.cls_opt_custom_data
+                    if item.get("text", "").strip() and item.get("expected", "").strip()
+                ] or get_default_dataset("classification")
+            return get_default_dataset("classification")
+
+        if data_source == "手动输入":
+            manual_data = [
+                item for item in st.session_state.get('cls_opt_manual_data', [])
+                if item.get("text", "").strip() and item.get("expected", "").strip()
+            ]
+            if manual_data:
+                return [
+                    {"input": item["text"], "ground_truth": item["expected"]}
+                    for item in manual_data
+                ]
+            return get_default_dataset("classification")
+
+        return get_default_dataset("classification")
+
+    def _get_optimization_config(self):
+        user_labels = st.session_state.get('user_labels', get_default_value("classification", "labels"))
+        if isinstance(user_labels, str):
+            labels_input_normalized = user_labels.replace("，", ",")
+            user_labels = [label.strip() for label in labels_input_normalized.split(",") if label.strip()]
+
+        user_task_desc = st.session_state.get('user_task_description', get_default_value("classification", "task_description"))
+        labels_str = ", ".join(user_labels)
+        task_desc = f"{user_task_desc}，判断为{labels_str}"
+
+        test_dataset = self._get_opt_test_dataset()
+
+        return task_desc, "classification", test_dataset, {"labels": user_labels}
     
     def _render_validation_lab(self, result):
         """渲染分类验证实验室"""
