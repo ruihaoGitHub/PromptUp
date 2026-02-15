@@ -2,6 +2,9 @@
 测试 NVIDIA API 连接和基本功能
 """
 import os
+import sys
+# 将项目根目录（PromptUp）添加到 Python 搜索路径
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dotenv import load_dotenv
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
