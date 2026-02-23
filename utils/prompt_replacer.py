@@ -16,9 +16,6 @@ def smart_replace(template: str, text: str, task_type_name: str = "") -> str:
     Returns:
         替换后的完整 Prompt
     """
-    # 记录原始模板
-    original = template
-    
     # 尝试各种占位符格式（按优先级排序）
     replacements = [
         # 标准占位符
@@ -73,11 +70,11 @@ def smart_replace(template: str, text: str, task_type_name: str = "") -> str:
                 print(f"   ✅ 替换 '{placeholder}' -> 实际文本")
     
     if replaced_count == 0:
-        print(f"   ⚠️ 警告：未找到任何占位符！")
-        print(f"   📋 完整模板内容：")
+        print("   ⚠️ 警告：未找到任何占位符！")
+        print("   📋 完整模板内容：")
         print(f"   {template}")
-        print(f"   💡 提示：请检查模板中使用的占位符格式")
-        print(f"   🔧 尝试自动修复：在 Prompt 末尾添加文本插入位置...")
+        print("   💡 提示：请检查模板中使用的占位符格式")
+        print("   🔧 尝试自动修复：在 Prompt 末尾添加文本插入位置...")
         
         # 根据任务类型添加合适的提示语
         if "分类" in task_type_name:

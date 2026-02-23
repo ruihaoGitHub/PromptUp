@@ -12,13 +12,6 @@ from optimizers import ClassificationOptimizer, SummarizationOptimizer, Translat
 from algorithms import SearchSpaceGenerator, RandomSearchAlgorithm, GeneticAlgorithm, BayesianOptimization
 from services import LLMService, ResponseParser
 
-try:
-    import optuna
-    OPTUNA_AVAILABLE = True
-except ImportError:
-    OPTUNA_AVAILABLE = False
-    print("⚠️ Optuna 未安装，贝叶斯优化功能不可用。运行: pip install optuna")
-
 
 class PromptOptimizer:
     """Prompt 自动优化器"""
@@ -85,7 +78,7 @@ class PromptOptimizer:
         """
         # 打印优化开始信息
         print(f"\n{'='*60}")
-        print(f"⚙️  开始 Prompt 优化")
+        print("⚙️  开始 Prompt 优化")
         print(f"{'='*60}")
         print(f"🔌 API 提供商: {self.provider.upper()}")
         print(f"🤖 使用模型: {self.model}")
@@ -164,7 +157,7 @@ class PromptOptimizer:
             
         except Exception as e:
             # 错误处理：详细记录到终端
-            print(f"\n❌ 优化失败！")
+            print("\n❌ 优化失败！")
             print(f"{'='*60}")
             
             error_msg = str(e)
@@ -181,7 +174,7 @@ class PromptOptimizer:
             
             # 打印完整堆栈
             import traceback
-            print(f"\n📄 完整堆栈信息：")
+            print("\n📄 完整堆栈信息：")
             traceback.print_exc()
             print(f"{'='*60}\n")
             
@@ -189,9 +182,9 @@ class PromptOptimizer:
             if "404" in error_msg:
                 raise Exception(f"API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。详细信息：{error_msg[:200]}")
             elif "401" in error_msg or "Unauthorized" in error_msg:
-                raise Exception(f"API Key 无效或已过期。请检查您的 API Key 配置。")
+                raise Exception("API Key 无效或已过期。请检查您的 API Key 配置。")
             elif "rate_limit" in error_msg.lower():
-                raise Exception(f"API 请求频率超限，请稍后再试。")
+                raise Exception("API 请求频率超限，请稍后再试。")
             else:
                 raise Exception(f"优化失败: {error_msg[:300]}")
     

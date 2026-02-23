@@ -21,7 +21,7 @@ class ClassificationOptimizer(OptimizerBase):
             ClassificationPrompt: 优化后的分类 Prompt
         """
         print(f"\n{'='*60}")
-        print(f"🏷️  开始分类任务 Prompt 优化")
+        print("🏷️  开始分类任务 Prompt 优化")
         print(f"{'='*60}")
         print(f"🔌 API 提供商: {self.provider.upper()}")
         print(f"🤖 使用模型: {self.model}")

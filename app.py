@@ -9,7 +9,6 @@ import os
 # 把项目根目录加入 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config.defaults import get_default_value, get_default_dataset
-from config.defaults import get_default_value
 from dotenv import load_dotenv
 from optimizer import PromptOptimizer
 from page_modules import (

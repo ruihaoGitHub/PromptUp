@@ -44,7 +44,7 @@ class SearchSpaceGenerator:
             SearchSpace 对象，包含 roles, styles, techniques
         """
         print(f"\n{'='*60}")
-        print(f"🧠 生成搜索空间")
+        print("🧠 生成搜索空间")
         print(f"{'='*60}")
         print(f"任务类型: {task_type}")
         print(f"任务描述: {task_description}")
@@ -115,12 +115,12 @@ class SearchSpaceGenerator:
             
             time.sleep(0.5)  # API 调用延迟，避免频率过快
             
-            print(f"✅ LLM 响应成功")
+            print("✅ LLM 响应成功")
             print(f"原始响应长度: {len(response.content)} 字符")
             
             # 解析 JSON
             content = response.content.strip()
-            print(f"\n🔍 解析 JSON 响应...")
+            print("\n🔍 解析 JSON 响应...")
             print(f"原始内容前100字符: {content[:100]}...")
             
             # 移除可能的 markdown 代码块标记
@@ -147,7 +147,7 @@ class SearchSpaceGenerator:
             print(f"清理后内容前100字符: {content[:100]}...")
             
             data = json.loads(content)
-            print(f"✅ JSON 解析成功")
+            print("✅ JSON 解析成功")
             print(f"  - roles: {len(data.get('roles', []))} 个")
             print(f"  - styles: {len(data.get('styles', []))} 个")
             print(f"  - techniques: {len(data.get('techniques', []))} 个")
@@ -167,7 +167,7 @@ class SearchSpaceGenerator:
                 return result
             
             # 转换数据格式
-            print(f"🔄 处理数据格式...")
+            print("🔄 处理数据格式...")
             data['roles'] = extract_names(data.get('roles', []))
             data['styles'] = extract_names(data.get('styles', []))
             data['techniques'] = extract_names(data.get('techniques', []))
@@ -177,16 +177,16 @@ class SearchSpaceGenerator:
             print(f"  ✅ techniques: {data['techniques']}")
             
             result = SearchSpace(**data)
-            print(f"\n✅ 搜索空间生成完成！\n")
+            print("\n✅ 搜索空间生成完成！\n")
             return result
             
         except Exception as e:
-            print(f"\n❌ 生成搜索空间失败！")
+            print("\n❌ 生成搜索空间失败！")
             print(f"错误类型: {type(e).__name__}")
             print(f"错误信息: {e}")
             
             import traceback
-            print(f"\n完整错误堆栈：")
+            print("\n完整错误堆栈：")
             traceback.print_exc()
             
             # 重新抛出异常，让上层处理
