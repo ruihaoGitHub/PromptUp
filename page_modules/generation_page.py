@@ -111,49 +111,47 @@ class GenerationPage(BasePage):
             
             with col2:
                 st.subheader("🌟 优化结果")
-            
-            # 优化思路展示
-            self.show_thinking_process(result)
-            
-            # 原始 Prompt 和优化后 Prompt 对比展示
-            st.markdown("### 📊 Prompt 对比")
-            
-            compare_col1, compare_col2 = st.columns(2)
-            
-            with compare_col1:
-                st.markdown("**📄 原始 Prompt**")
-                original_prompt = st.session_state.get('original_user_input', '未保存')
-                st.text_area(
-                    "原始输入",
-                    value=original_prompt,
-                    height=150,
-                    label_visibility="collapsed",
-                    disabled=True
-                )
-            
-                        with compare_col2:
-                # 保留原来的“优化后的Prompt”展示逻辑
-                st.markdown("**✨ 优化后的 Prompt**")
-                st.text_area(
-                    "优化结果",
-                    value=result.improved_prompt,
-                    height=150,
-                    label_visibility="collapsed"
-                )
+
+                # 优化思路展示
+                self.show_thinking_process(result)
+
+                # 原始 Prompt 和优化后 Prompt 对比展示
+                st.markdown("### 📊 Prompt 对比")
+
+                compare_col1, compare_col2 = st.columns(2)
+
+                with compare_col1:
+                    st.markdown("**📄 原始 Prompt**")
+                    original_prompt = st.session_state.get('original_user_input', '未保存')
+                    st.text_area(
+                        "原始输入",
+                        value=original_prompt,
+                        height=150,
+                        label_visibility="collapsed",
+                        disabled=True
+                    )
+
+                with compare_col2:
+                    st.markdown("**✨ 优化后的 Prompt**")
+                    st.text_area(
+                        "优化结果",
+                        value=result.improved_prompt,
+                        height=150,
+                        label_visibility="collapsed"
+                    )
 
                 # 新增：关键词贡献度分析（和原功能并列展示）
-            st.markdown("---")  # 加分割线，区分两个模块，更美观
-            st.markdown("**🔆 关键词贡献度分析**")
-            if hasattr(result, 'improved_prompt') and result.improved_prompt:
-                # 调用贡献度分析渲染函数
-                render_contribution_analysis(result.improved_prompt)
-            else:
-                st.warning("未找到可分析的 Prompt 数据")
-            
-            # 完整的优化后 Prompt 代码框
-            st.markdown("**📋 完整优化后的 Prompt（可直接复制）：**")
-            st.code(result.improved_prompt, language=None)
-            st.caption("📌 点击代码框右上角的复制按钮即可复制")
+                st.markdown("---")  # 加分割线，区分两个模块，更美观
+                st.markdown("**🔆 关键词贡献度分析**")
+                if hasattr(result, 'improved_prompt') and result.improved_prompt:
+                    render_contribution_analysis(result.improved_prompt)
+                else:
+                    st.warning("未找到可分析的 Prompt 数据")
+
+                # 完整的优化后 Prompt 代码框
+                st.markdown("**📋 完整优化后的 Prompt（可直接复制）：**")
+                st.code(result.improved_prompt, language=None)
+                st.caption("📌 点击代码框右上角的复制按钮即可复制")
         
         # A/B 对比测试区域
         if 'result' in st.session_state and st.session_state.result:

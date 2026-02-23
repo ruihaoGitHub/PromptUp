@@ -363,44 +363,6 @@ PromptUp 支持四种任务类型，每种类型都有专门的优化策略：
 
 ---
 
-## 🧬 测试
-
-### 测试状态
-
-```
-✅ E2E 测试：3/3 通过（100%）
-✅ 单元测试：完整覆盖
-✅ 算法测试：Level 1-5 全覆盖
-```
-
-详细测试报告请参见 [E2E_TEST_RESULTS.md](E2E_TEST_RESULTS.md)
-
-### 运行测试
-
-```bash
-# 运行所有测试
-python tests/run_tests.py
-
-# 运行 E2E 测试
-python tests/test_e2e.py
-
-# 运行单个算法测试
-python tests/test_genetic_algorithm.py
-python tests/test_bayesian_optimization.py
-python tests/test_random_search.py
-```
-
-### 测试层级
-
-- **Level 1**：基础功能测试（API 连接、模板加载）
-- **Level 2**：单任务优化测试（分类、摘要、翻译）
-- **Level 3**：算法测试（随机搜索、遗传、贝叶斯）
-- **Level 4**：集成测试（多任务、多算法）
-- **Level 5**：E2E 测试（真实 API 调用）
-
-测试计划请参见 [TEST_PLAN.md](TEST_PLAN.md)
-
----
 
 ## 📚 文档导航
 
@@ -535,12 +497,6 @@ NVIDIA_API_KEY=nvapi-你的key
 3. 提交更改
 4. 发起 Pull Request
 5. 详见 [开发指南](#-开发指南)
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
 ---
 
