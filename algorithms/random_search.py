@@ -47,16 +47,31 @@ class RandomSearchAlgorithm:
         """
         results_log = []
         calc = MetricsCalculator()
+
+        # 预生成所有组合，确保不重复
+        all_combinations = [
+            (role, style, tech)
+            for role in search_space.roles
+            for style in search_space.styles
+            for tech in search_space.techniques
+        ]
+        total_combinations = len(all_combinations)
+        if total_combinations == 0:
+            raise ValueError("搜索空间为空，无法进行随机搜索。")
+
+        if iterations > total_combinations:
+            print(f"⚠️ 迭代次数 {iterations} 超过搜索空间组合数 {total_combinations}，将自动调整为 {total_combinations} 次以避免重复。")
+            iterations = total_combinations
+
+        random.shuffle(all_combinations)
         
         print(f"\n{'='*60}")
         print(f"开始随机搜索优化 - {iterations} 次迭代")
         print(f"{'='*60}\n")
         
         for i in range(iterations):
-            # 1. 随机采样：摇骰子组合 Prompt
-            chosen_role = random.choice(search_space.roles)
-            chosen_style = random.choice(search_space.styles)
-            chosen_tech = random.choice(search_space.techniques)
+            # 1. 随机采样：无重复组合
+            chosen_role, chosen_style, chosen_tech = all_combinations[i]
             
             print(f"迭代 {i+1}/{iterations}")
             print(f"  角色: {chosen_role}")

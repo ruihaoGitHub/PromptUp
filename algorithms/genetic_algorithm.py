@@ -65,12 +65,53 @@ class GeneticAlgorithm:
         print(f"💰 预计 API 调用: {generations * population_size * len(test_dataset)} 次")
         print(f"{'='*60}\n")
         
+        # 预生成所有组合，确保不重复
+        all_combinations = [
+            (role, style, tech)
+            for role in search_space.roles
+            for style in search_space.styles
+            for tech in search_space.techniques
+        ]
+        total_combinations = len(all_combinations)
+        if total_combinations == 0:
+            raise ValueError("搜索空间为空，无法运行遗传算法。")
+        if population_size > total_combinations:
+            raise ValueError(f"种群规模 {population_size} 超过搜索空间组合数 {total_combinations}，无法保证不重复。")
+
+        max_generations = total_combinations // population_size
+        if max_generations == 0:
+            raise ValueError("搜索空间组合数不足以生成完整一代种群。")
+        if generations > max_generations:
+            print(f"⚠️ 代数 {generations} 超过可用不重复代数 {max_generations}，已自动调整。")
+            generations = max_generations
+
+        remaining_combinations = set(all_combinations)
+
+        def _reserve_unique_combo(preferred_combo=None):
+            if preferred_combo and preferred_combo in remaining_combinations:
+                remaining_combinations.remove(preferred_combo)
+                return preferred_combo
+            if not remaining_combinations:
+                raise RuntimeError("搜索空间组合已耗尽，无法生成不重复的个体。")
+            combo = random.choice(list(remaining_combinations))
+            remaining_combinations.remove(combo)
+            return combo
+
+        def _finalize_unique_combo(individual):
+            preferred_combo = (individual["role"], individual["style"], individual["technique"])
+            role, style, technique = _reserve_unique_combo(preferred_combo)
+            if (role, style, technique) != preferred_combo:
+                print("    🔁 去重: 组合已使用，替换为新组合")
+            individual["role"], individual["style"], individual["technique"] = role, style, technique
+            return individual
+
         def create_individual():
             """创建一个随机个体（Prompt 组合）"""
+            role, style, technique = _reserve_unique_combo()
             return {
-                "role": random.choice(search_space.roles),
-                "style": random.choice(search_space.styles),
-                "technique": random.choice(search_space.techniques),
+                "role": role,
+                "style": style,
+                "technique": technique,
                 "score": 0.0,
                 "full_prompt": ""
             }
@@ -80,6 +121,14 @@ class GeneticAlgorithm:
             role = individual["role"]
             style = individual["style"]
             technique = individual["technique"]
+
+            label_candidates = []
+            if task_type == "classification":
+                label_candidates = list({
+                    str(sample.get("ground_truth", "")).strip()
+                    for sample in test_dataset
+                    if str(sample.get("ground_truth", "")).strip()
+                })
             
             # 构建 Prompt（根据任务类型优化输出格式）
             if task_type == "classification":
@@ -124,23 +173,40 @@ class GeneticAlgorithm:
                 
                 # 调用 LLM（带重试机制）
                 prediction = ""
-                max_retries = 3
+                max_retries = 5
                 retry_delay = 2.0
                 
                 for retry in range(max_retries):
                     try:
                         response = self.llm.invoke(final_prompt)
-                        time.sleep(1.0)  # API 调用延迟，遗传算法密集调用需要更长延迟
+                        if not getattr(self.llm, "is_mock", False):
+                            time.sleep(1.0)  # API 调用延迟，遗传算法密集调用需要更长延迟
                         prediction = response.content.strip()
                         break  # 成功则跳出重试循环
                         
                     except Exception as e:
                         error_msg = str(e)
-                        if "429" in error_msg or "Too Many Requests" in error_msg:
+                        is_rate_limit = "429" in error_msg or "Too Many Requests" in error_msg
+                        is_network_issue = any(
+                            key in error_msg
+                            for key in [
+                                "HTTPSConnectionPool",
+                                "ConnectionError",
+                                "Read timed out",
+                                "ConnectTimeout",
+                                "Max retries exceeded"
+                            ]
+                        )
+
+                        if is_rate_limit or is_network_issue:
                             if retry < max_retries - 1:
                                 wait_time = retry_delay * (2 ** retry)  # 指数退避: 2s, 4s, 8s
-                                print(f"    ⚠️ 样本 {idx} 请求过快，等待 {wait_time:.0f}s 后重试（第{retry+1}次）...")
-                                time.sleep(wait_time)
+                                if is_rate_limit:
+                                    print(f"    ⚠️ 样本 {idx} 请求过快，等待 {wait_time:.0f}s 后重试（第{retry+1}次）...")
+                                else:
+                                    print(f"    ⚠️ 样本 {idx} 网络异常，等待 {wait_time:.0f}s 后重试（第{retry+1}次）...")
+                                if not getattr(self.llm, "is_mock", False):
+                                    time.sleep(wait_time)
                                 continue
                             else:
                                 print(f"    ❌ 样本 {idx} 达到最大重试次数，跳过")
@@ -160,8 +226,13 @@ class GeneticAlgorithm:
                         if prediction.startswith(prefix):
                             prediction = prediction[len(prefix):].strip()
                     # 如果包含多个词，尝试提取关键标签
-                    if len(prediction) > 10:  # 太长了，可能是句子
-                        # 尝试在句子中查找标签关键词
+                    if label_candidates and prediction not in label_candidates:
+                        for label in label_candidates:
+                            if label and label in prediction:
+                                prediction = label
+                                break
+                    if len(prediction) > 10 and (not label_candidates or prediction not in label_candidates):
+                        # 兜底：尝试在句子中查找常见情感标签关键词
                         for label in ["积极", "消极", "中立", "正面", "负面", "中性"]:
                             if label in prediction:
                                 prediction = label
@@ -216,14 +287,13 @@ class GeneticAlgorithm:
         
         def crossover(parent1, parent2):
             """交叉：孩子继承父母的优良基因"""
-            child = {
+            return {
                 "role": random.choice([parent1["role"], parent2["role"]]),
                 "style": random.choice([parent1["style"], parent2["style"]]),
                 "technique": random.choice([parent1["technique"], parent2["technique"]]),
                 "score": 0.0,
                 "full_prompt": ""
             }
-            return child
         
         def mutate(individual):
             """变异：随机改变某些基因，引入新可能性"""
@@ -297,13 +367,13 @@ class GeneticAlgorithm:
             if gen == generations - 1:
                 break
             
-            # 选择（精英策略）
+            # 选择（精英策略）：去重模式下精英用于父代选择，不直接保留
             elite_count = max(1, int(population_size * elite_ratio))
-            print(f"\n🧬 选择: 保留 {elite_count} 个精英到下一代")
-            new_population = population[:elite_count].copy()
+            print(f"\n🧬 选择: 精英用于父代选择（去重模式不保留到下一代）")
+            new_population = []
             
             # 繁衍（交叉 + 变异）
-            print(f"🧬 繁衍: 生成 {population_size - elite_count} 个新个体")
+            print(f"🧬 繁衍: 生成 {population_size} 个新个体")
             while len(new_population) < population_size:
                 # 轮盘赌选择父母（更倾向于选择高分个体）
                 # 简化版：从前50%中随机选
@@ -316,6 +386,9 @@ class GeneticAlgorithm:
                 
                 # 变异
                 child = mutate(child)
+
+                # 去重并占用组合
+                child = _finalize_unique_combo(child)
                 
                 new_population.append(child)
             
