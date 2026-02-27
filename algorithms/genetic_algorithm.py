@@ -56,7 +56,7 @@ class GeneticAlgorithm:
             - evolution_history: 进化历史 [{"generation": 1, "best_score": 85.0, "avg_score": 78.5}, ...]
         """
         print(f"\n{'='*60}")
-        print(f"🧬 遗传算法优化开始")
+        print("🧬 遗传算法优化开始")
         print(f"{'='*60}")
         print(f"📋 任务类型: {task_type}")
         print(f"📊 代数: {generations}, 种群规模: {population_size}")
@@ -254,7 +254,7 @@ class GeneticAlgorithm:
             if not valid_pairs:
                 # 所有样本都失败了
                 score = 0.0
-                print(f"    → 得分: 0.00 (所有样本评估失败)")
+                print("    → 得分: 0.00 (所有样本评估失败)")
             else:
                 valid_predictions = [p for p, g in valid_pairs]
                 valid_ground_truths = [g for p, g in valid_pairs]
@@ -369,15 +369,14 @@ class GeneticAlgorithm:
             
             # 选择（精英策略）：去重模式下精英用于父代选择，不直接保留
             elite_count = max(1, int(population_size * elite_ratio))
-            print(f"\n🧬 选择: 精英用于父代选择（去重模式不保留到下一代）")
+            print("\n🧬 选择: 精英用于父代选择（去重模式不保留到下一代）")
             new_population = []
             
             # 繁衍（交叉 + 变异）
             print(f"🧬 繁衍: 生成 {population_size} 个新个体")
             while len(new_population) < population_size:
-                # 轮盘赌选择父母（更倾向于选择高分个体）
-                # 简化版：从前50%中随机选
-                parent_pool_size = max(2, population_size // 2)
+                # 从已排序种群前 elite_count 名中选择父代（分数由高到低排列）
+                parent_pool_size = max(2, elite_count)
                 parent1 = random.choice(population[:parent_pool_size])
                 parent2 = random.choice(population[:parent_pool_size])
                 
@@ -398,7 +397,7 @@ class GeneticAlgorithm:
         best_result = max(all_results, key=lambda x: x.avg_score)
         
         print(f"\n{'='*60}")
-        print(f"🏆 遗传算法完成！")
+        print("🏆 遗传算法完成！")
         print(f"{'='*60}")
         print(f"🥇 最终冠军得分: {best_result.avg_score:.2f}")
         print(f"🧬 最佳组合: {best_result.role} + {best_result.style} + {best_result.technique}")

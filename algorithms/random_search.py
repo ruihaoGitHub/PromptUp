@@ -95,7 +95,7 @@ class RandomSearchAlgorithm:
                     prompt_filled = self._fill_prompt(candidate_prompt, case['input'], task_type)
                     
                     # 调用 LLM
-                    print(f"    🤖 调用 LLM...")
+                    print("    🤖 调用 LLM...")
                     response = self.llm.invoke(prompt_filled)
                     time.sleep(0.3)  # API 调用延迟
                     prediction = response.content.strip()
@@ -107,7 +107,7 @@ class RandomSearchAlgorithm:
                     print(f"    ✅ 得分: {score:.1f}")
                     
                 except Exception as e:
-                    print(f"    ❌ 评估失败！")
+                    print("    ❌ 评估失败！")
                     print(f"    错误类型: {type(e).__name__}")
                     print(f"    错误信息: {e}")
                     scores.append(0.0)
@@ -224,14 +224,14 @@ class RandomSearchAlgorithm:
             return score
         elif task_type == "summarization":
             # 摘要任务：ROUGE
-            print(f"    📊 计算 ROUGE 分数...")
+            print("    📊 计算 ROUGE 分数...")
             rouge_scores = calc.calculate_rouge(prediction, ground_truth)
             score = rouge_scores['rouge1']
             print(f"    📊 ROUGE-1: {score:.2f}")
             return score
         elif task_type == "translation":
             # 翻译任务：BLEU
-            print(f"    📊 计算 BLEU 分数...")
+            print("    📊 计算 BLEU 分数...")
             score = calc.calculate_bleu(prediction, ground_truth)
             print(f"    📊 BLEU: {score:.2f}")
             return score

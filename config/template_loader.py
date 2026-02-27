@@ -2,7 +2,6 @@
 Meta-Prompt 模板加载器
 从外部文件加载长文本 Meta-Prompt 模板
 """
-import os
 from pathlib import Path
 
 

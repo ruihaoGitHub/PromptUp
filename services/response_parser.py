@@ -2,7 +2,6 @@
 响应解析服务
 负责解析和清理 LLM 响应
 """
-import json
 from typing import Any, Dict
 from utils import safe_json_loads, clean_improved_prompt
 
@@ -121,7 +120,7 @@ class ResponseParser:
         
         # 构建错误消息
         msg_parts = [
-            f"❌ 响应解析失败！",
+            "❌ 响应解析失败！",
             f"错误类型: {type(error).__name__}",
             f"错误详情: {error_msg[:500]}"
         ]

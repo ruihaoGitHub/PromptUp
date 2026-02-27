@@ -22,7 +22,6 @@ def check_unescaped_braces(template: str, template_name: str = "模板") -> None
     
     # 查找所有花括号
     single_open = re.findall(r'(?<!\{)\{(?!\{)', template)
-    single_close = re.findall(r'(?<!\})\}(?!\})', template)
     
     # 查找合法的占位符（如 {scene_desc}, {template_name} 等）
     valid_placeholders = re.findall(r'\{[a-zA-Z_][a-zA-Z0-9_]*\}', template)
@@ -32,9 +31,9 @@ def check_unescaped_braces(template: str, template_name: str = "模板") -> None
     
     if suspicious_count > 0:
         print(f"⚠️ 警告：{template_name} 中检测到 {suspicious_count} 个可疑的未转义花括号")
-        print(f"   这可能会导致 format_messages() 时出现 KeyError")
+        print("   这可能会导致 format_messages() 时出现 KeyError")
         print(f"   合法占位符: {valid_placeholders}")
-        print(f"   如果模板中包含示例JSON或其他需要显示花括号的内容，请使用 {{{{ 和 }}}} 进行转义")
+        print("   如果模板中包含示例JSON或其他需要显示花括号的内容，请使用 {{{{ 和 }}}} 进行转义")
 
 
 def parse_markdown_response(content: str) -> dict:
@@ -162,7 +161,7 @@ def safe_json_loads(content: str) -> dict:
             result = json.loads(cleaned_content)
             print("✅ 正则清理后解析成功")
             return result
-        except Exception as final_err:
-            print(f"❌ 所有JSON解析尝试均失败")
+        except Exception:
+            print("❌ 所有JSON解析尝试均失败")
             print(f"原始内容前500字符: {content[:500]}")
             raise json_err  # 抛出原始错误

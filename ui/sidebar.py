@@ -3,7 +3,7 @@ Streamlit 侧边栏配置面板
 """
 import streamlit as st
 import os
-from nvidia_models import NVIDIA_MODELS
+from config.nvidia_models import NVIDIA_MODELS
 from .styles import apply_radio_styles
 
 

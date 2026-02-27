@@ -4,5 +4,6 @@ UI 组件模块
 """
 from .styles import apply_custom_styles
 from .sidebar import render_sidebar
+from .contribution_analysis import render_contribution_analysis
 
-__all__ = ['apply_custom_styles', 'render_sidebar']
+__all__ = ['apply_custom_styles', 'render_sidebar', 'render_contribution_analysis']

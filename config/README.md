@@ -12,6 +12,11 @@
 
 ## 📄 文件说明
 
+### `nvidia_models.py`
+**NVIDIA API 可选模型列表**
+
+集中维护 UI 侧边栏展示的 NVIDIA 模型枚举，避免在界面层硬编码模型名称。
+
 ### `models.py`
 **数据模型定义**
 

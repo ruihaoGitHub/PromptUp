@@ -59,14 +59,14 @@ class BayesianOptimization:
             raise ImportError("贝叶斯优化需要 optuna 库。请运行: pip install optuna")
         
         print(f"\n{'='*60}")
-        print(f"🧐 贝叶斯优化开始")
+        print("🧐 贝叶斯优化开始")
         print(f"{'='*60}")
         print(f"📋 任务类型: {task_type}")
-        print(f"🔬 使用算法: TPE (Tree-structured Parzen Estimator)")
+        print("🔬 使用算法: TPE (Tree-structured Parzen Estimator)")
         print(f"🎯 尝试次数: {n_trials}")
         print(f"📏 测试集样本数: {len(test_dataset)}")
         print(f"💰 预计 API 调用: {n_trials * len(test_dataset)} 次")
-        print(f"💡 贝叶斯优化会根据历史结果智能选择下一个参数组合")
+        print("💡 贝叶斯优化会根据历史结果智能选择下一个参数组合")
         print(f"{'='*60}\n")
         
         all_results = []
@@ -88,7 +88,7 @@ class BayesianOptimization:
             
             # 显示策略提示
             if trial.number < 5:
-                print(f"  📍 策略: 随机探索（建立初始模型）")
+                print("  📍 策略: 随机探索（建立初始模型）")
             else:
                 # 计算与最佳结果的相似度（简单启发式）
                 best_trials = sorted(trial_history, key=lambda x: x['score'], reverse=True)[:3]
@@ -96,9 +96,9 @@ class BayesianOptimization:
                     (role == t['role'] or style == t['style'] or technique == t['technique'])
                     for t in best_trials
                 ):
-                    print(f"  📍 策略: 开发高分区域（基于历史最佳）")
+                    print("  📍 策略: 开发高分区域（基于历史最佳）")
                 else:
-                    print(f"  📍 策略: 探索新区域（避免局部最优）")
+                    print("  📍 策略: 探索新区域（避免局部最优）")
             
             print(f"  参数组合: {role} + {style} + {technique}")
             
@@ -240,7 +240,7 @@ class BayesianOptimization:
             
             # 试验间增加延迟，避免连续调用触发限流
             if trial.number < n_trials - 1:  # 不是最后一次
-                print(f"  ⏸️  试验间冷却 2秒...")
+                print("  ⏸️  试验间冷却 2秒...")
                 time.sleep(2.0)
             
             return score
@@ -269,7 +269,7 @@ class BayesianOptimization:
                           r.technique == best_trial.params['technique'])
         
         print(f"\n{'='*60}")
-        print(f"🏆 贝叶斯优化完成！")
+        print("🏆 贝叶斯优化完成！")
         print(f"{'='*60}")
         print(f"🥇 最佳得分: {best_result.avg_score:.2f}")
         print(f"🧬 最佳组合: {best_result.role} + {best_result.style} + {best_result.technique}")
@@ -280,13 +280,13 @@ class BayesianOptimization:
         first_5_avg = sum(scores[:5]) / 5 if len(scores) >= 5 else sum(scores) / len(scores)
         last_5_avg = sum(scores[-5:]) / 5 if len(scores) >= 5 else sum(scores) / len(scores)
         
-        print(f"\n📈 优化分析:")
+        print("\n📈 优化分析:")
         print(f"  前5次平均: {first_5_avg:.2f}")
         print(f"  后5次平均: {last_5_avg:.2f}")
         if last_5_avg >= first_5_avg:
             print(f"  ✅ 后期表现提升 {last_5_avg - first_5_avg:.2f} 分（智能优化生效）")
         else:
-            print(f"  ⚠️ 后期探索其他区域（防止陷入局部最优）")
+            print("  ⚠️ 后期探索其他区域（防止陷入局部最优）")
         
         print(f"{'='*60}\n")
         

@@ -30,7 +30,7 @@ class SummarizationOptimizer(OptimizerBase):
             SummarizationPrompt: 优化后的摘要 Prompt
         """
         print(f"\n{'='*60}")
-        print(f"📝 开始摘要任务 Prompt 优化")
+        print("📝 开始摘要任务 Prompt 优化")
         print(f"{'='*60}")
         print(f"🔌 API 提供商: {self.provider.upper()}")
         print(f"🤖 使用模型: {self.model}")

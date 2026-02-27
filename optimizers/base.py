@@ -128,21 +128,21 @@ class OptimizerBase:
         
         # 如果是Pydantic验证错误，显示更详细的信息
         if hasattr(e, 'errors'):
-            print(f"\n🔴 Pydantic 验证错误详情:")
+            print("\n🔴 Pydantic 验证错误详情:")
             for err in e.errors():
                 print(f"  - 字段: {err.get('loc', 'unknown')}")
                 print(f"    错误: {err.get('msg', 'unknown')}")
                 print(f"    类型: {err.get('type', 'unknown')}")
         
         import traceback
-        print(f"\n📄 完整堆栈信息：")
+        print("\n📄 完整堆栈信息：")
         traceback.print_exc()
         print(f"{'='*60}\n")
         
         # 抛出异常
         if "404" in error_msg:
-            raise Exception(f"API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。")
+            raise Exception("API 调用失败 (404): 请检查 API Key 是否有效，或模型名称是否正确。")
         elif "401" in error_msg or "Unauthorized" in error_msg:
-            raise Exception(f"API Key 无效或已过期。")
+            raise Exception("API Key 无效或已过期。")
         else:
             raise Exception(f"{task_name}优化失败: {error_msg[:300]}")
