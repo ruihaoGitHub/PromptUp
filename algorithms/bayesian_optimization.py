@@ -3,6 +3,7 @@
 使用概率模型智能优化 Prompt 组合
 """
 import time
+import random
 from typing import Optional, Callable
 from config.models import SearchSpace, SearchResult
 from metrics import MetricsCalculator
@@ -57,6 +58,21 @@ class BayesianOptimization:
         """
         if not OPTUNA_AVAILABLE:
             raise ImportError("贝叶斯优化需要 optuna 库。请运行: pip install optuna")
+
+        # 预生成所有组合（用于去重 + 冷启动随机探索）
+        all_combinations = [
+            (role, style, tech)
+            for role in search_space.roles
+            for style in search_space.styles
+            for tech in search_space.techniques
+        ]
+        if not all_combinations:
+            raise ValueError("搜索空间为空，无法运行贝叶斯优化。")
+
+        # 初始随机探索次数：按 n_trials 比例计算（避免 n_trials=5 仍固定探索5次）
+        warmup_ratio = 0.25
+        warmup_trials = int(round(n_trials * warmup_ratio))
+        warmup_trials = max(1, min(n_trials, warmup_trials))
         
         print(f"\n{'='*60}")
         print("🧐 贝叶斯优化开始")
@@ -64,6 +80,7 @@ class BayesianOptimization:
         print(f"📋 任务类型: {task_type}")
         print("🔬 使用算法: TPE (Tree-structured Parzen Estimator)")
         print(f"🎯 尝试次数: {n_trials}")
+        print(f"🌱 初始随机探索: {warmup_trials} 次（{warmup_ratio:.0%}）")
         print(f"📏 测试集样本数: {len(test_dataset)}")
         print(f"💰 预计 API 调用: {n_trials * len(test_dataset)} 次")
         print("💡 贝叶斯优化会根据历史结果智能选择下一个参数组合")
@@ -72,33 +89,37 @@ class BayesianOptimization:
         all_results = []
         trial_history = []
         best_score_so_far = 0.0
+
+        # 组合级去重：同一个 (role, style, technique) 只评估一次
+        used_combo_keys: set[str] = set()
+
+        def _combo_key(role: str, style: str, technique: str) -> str:
+            return f"{role}|||{style}|||{technique}"
+
+        combo_keys = [_combo_key(r, s, t) for (r, s, t) in all_combinations]
         
         def objective(trial):
             """Optuna 的目标函数"""
             nonlocal best_score_so_far
-            
-            # 让 Optuna 建议参数
-            role = trial.suggest_categorical('role', search_space.roles)
-            style = trial.suggest_categorical('style', search_space.styles)
-            technique = trial.suggest_categorical('technique', search_space.techniques)
+
+            # 让 Optuna 选择一个不重复的组合（组合级 categorical）
+            combo = trial.suggest_categorical('combo', combo_keys)
+            if combo in used_combo_keys:
+                print("  🔁 去重: 组合已评估，跳过该试验")
+                raise optuna.TrialPruned()
+            used_combo_keys.add(combo)
+
+            role, style, technique = combo.split("|||", 2)
             
             print(f"\n{'='*60}")
             print(f"🔍 试验 {trial.number + 1}/{n_trials}")
             print(f"{'='*60}")
             
             # 显示策略提示
-            if trial.number < 5:
-                print("  📍 策略: 随机探索（建立初始模型）")
+            if trial.number < warmup_trials:
+                print("  📍 策略: 随机探索（冷启动）")
             else:
-                # 计算与最佳结果的相似度（简单启发式）
-                best_trials = sorted(trial_history, key=lambda x: x['score'], reverse=True)[:3]
-                if best_trials and any(
-                    (role == t['role'] or style == t['style'] or technique == t['technique'])
-                    for t in best_trials
-                ):
-                    print("  📍 策略: 开发高分区域（基于历史最佳）")
-                else:
-                    print("  📍 策略: 探索新区域（避免局部最优）")
+                print("  📍 策略: TPE 智能选择（利用历史结果）")
             
             print(f"  参数组合: {role} + {style} + {technique}")
             
@@ -270,27 +291,38 @@ class BayesianOptimization:
             return score
         
         # 创建 Optuna Study（优化 TPE 参数）
+        # 说明：这里使用 n_startup_trials 控制“初始随机探索”轮数。
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         study = optuna.create_study(
             direction="maximize",
             sampler=optuna.samplers.TPESampler(
-                n_startup_trials=min(5, n_trials // 3),  # 前5次随机探索
-                n_ei_candidates=24,  # 默认24，增加候选数量
-                multivariate=True,  # 考虑参数间的相关性
+                n_startup_trials=warmup_trials,
+                n_ei_candidates=24,
+                multivariate=False,
                 warn_independent_sampling=False,
-                seed=None  # 移除固定种子，增加随机性
-            )
+                seed=None,
+            ),
         )
+
+        # 冷启动：预先 enqueue 不重复的随机组合，确保前 warmup_trials 次确实是“随机且不重复”
+        warmup_seeds = random.sample(combo_keys, k=min(warmup_trials, len(combo_keys)))
+        for combo in warmup_seeds:
+            study.enqueue_trial({"combo": combo})
         
         # 执行优化
         study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
         
         # 获取最佳结果
         best_trial = study.best_trial
-        best_result = next(r for r in all_results if 
-                          r.role == best_trial.params['role'] and
-                          r.style == best_trial.params['style'] and
-                          r.technique == best_trial.params['technique'])
+        best_combo = best_trial.params.get("combo")
+        if not best_combo:
+            raise RuntimeError("未找到最佳试验的 combo 参数，无法定位最佳结果。")
+        best_role, best_style, best_technique = best_combo.split("|||", 2)
+        best_result = next(
+            r
+            for r in all_results
+            if r.role == best_role and r.style == best_style and r.technique == best_technique
+        )
         
         print(f"\n{'='*60}")
         print("🏆 贝叶斯优化完成！")
@@ -299,16 +331,21 @@ class BayesianOptimization:
         print(f"🧬 最佳组合: {best_result.role} + {best_result.style} + {best_result.technique}")
         print(f"📊 收敛速度: 在第 {best_trial.number + 1} 次试验中找到最佳结果")
         
-        # 分析优化效果
+        # 分析优化效果（注意：去重可能导致部分 trial 被 pruned，因此历史长度可能 < n_trials）
         scores = [h['score'] for h in trial_history]
-        first_5_avg = sum(scores[:5]) / 5 if len(scores) >= 5 else sum(scores) / len(scores)
-        last_5_avg = sum(scores[-5:]) / 5 if len(scores) >= 5 else sum(scores) / len(scores)
+        if not scores:
+            raise RuntimeError("所有试验均未产生有效评分（可能全部被 pruned 或评估失败）。")
+
+        first_k = min(warmup_trials, len(scores))
+        last_k = min(5, len(scores))
+        first_avg = sum(scores[:first_k]) / first_k
+        last_avg = sum(scores[-last_k:]) / last_k
         
         print("\n📈 优化分析:")
-        print(f"  前5次平均: {first_5_avg:.2f}")
-        print(f"  后5次平均: {last_5_avg:.2f}")
-        if last_5_avg >= first_5_avg:
-            print(f"  ✅ 后期表现提升 {last_5_avg - first_5_avg:.2f} 分（智能优化生效）")
+        print(f"  冷启动前{first_k}次平均: {first_avg:.2f}")
+        print(f"  最近{last_k}次平均: {last_avg:.2f}")
+        if last_avg >= first_avg:
+            print(f"  ✅ 后期表现提升 {last_avg - first_avg:.2f} 分（智能优化生效）")
         else:
             print("  ⚠️ 后期探索其他区域（防止陷入局部最优）")
         
