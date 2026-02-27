@@ -48,12 +48,26 @@ elif task_type == "翻译任务":
 
 # 创建优化器实例（所有页面共享）
 if api_key_input and api_key_input.strip():
-    optimizer = PromptOptimizer(
-        api_key=api_key_input,
-        model=model_choice,
-        base_url=base_url if base_url else None,
-        provider=api_provider.lower()
+    optimizer_cfg = (
+        api_provider.lower(),
+        model_choice,
+        base_url if base_url else None,
+        api_key_input,
     )
+
+    cached_cfg = st.session_state.get("_prompt_optimizer_cfg")
+    cached_optimizer = st.session_state.get("_prompt_optimizer_instance")
+    if cached_cfg == optimizer_cfg and cached_optimizer is not None:
+        optimizer = cached_optimizer
+    else:
+        optimizer = PromptOptimizer(
+            api_key=api_key_input,
+            model=model_choice,
+            base_url=base_url if base_url else None,
+            provider=api_provider.lower(),
+        )
+        st.session_state["_prompt_optimizer_cfg"] = optimizer_cfg
+        st.session_state["_prompt_optimizer_instance"] = optimizer
     
     # 将配置保存到 session_state，供页面模块使用
     st.session_state.api_key_input = api_key_input

@@ -264,9 +264,17 @@ Machine Learning=机器学习"""
         
         # 验证实验室区域
         if 'translation_result' in st.session_state and st.session_state.translation_result:
-            self._render_validation_lab(st.session_state.translation_result)
+            @st.fragment
+            def _validation_lab_fragment():
+                self._render_validation_lab(st.session_state.translation_result)
 
-        self._render_optimization_lab()
+            _validation_lab_fragment()
+
+        @st.fragment
+        def _optimization_lab_fragment():
+            self._render_optimization_lab()
+
+        _optimization_lab_fragment()
 
     def _render_optimization_lab(self):
         """渲染翻译任务优化实验室（随机搜索/遗传算法）"""
