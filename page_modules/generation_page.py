@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from .base_page import BasePage
 from config.defaults import get_default_value, get_placeholder
-from contribution_analysis import render_contribution_analysis
+from ui.contribution_analysis import render_contribution_analysis
 
 
 class GenerationPage(BasePage):

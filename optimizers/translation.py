@@ -29,7 +29,7 @@ class TranslationOptimizer(OptimizerBase):
             TranslationPrompt: 优化后的翻译 Prompt
         """
         print(f"\n{'='*60}")
-        print(f"🌍 开始翻译任务 Prompt 优化")
+        print("🌍 开始翻译任务 Prompt 优化")
         print(f"{'='*60}")
         print(f"🔌 API 提供商: {self.provider.upper()}")
         print(f"🤖 使用模型: {self.model}")

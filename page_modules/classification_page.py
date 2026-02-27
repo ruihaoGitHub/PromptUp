@@ -4,12 +4,11 @@
 """
 import streamlit as st
 import pandas as pd
-import io
 import sys
 import os
 # 将项目根目录（PromptUp）添加到 Python 搜索路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from contribution_analysis import render_contribution_analysis
+from ui.contribution_analysis import render_contribution_analysis
 from .base_page import BasePage
 from config.defaults import get_default_value, get_placeholder, get_default_lab_dataset, get_default_dataset
 

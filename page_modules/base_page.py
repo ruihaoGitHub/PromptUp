@@ -3,7 +3,6 @@
 定义所有页面的通用接口和辅助方法
 """
 import streamlit as st
-from typing import Optional
 from optimizer import PromptOptimizer
 
 
