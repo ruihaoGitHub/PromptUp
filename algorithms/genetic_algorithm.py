@@ -4,6 +4,7 @@
 """
 import time
 import random
+import re
 from typing import Optional, Callable
 from config.models import SearchSpace, SearchResult
 from metrics import MetricsCalculator
@@ -118,9 +119,15 @@ class GeneticAlgorithm:
         
         def evaluate_individual(individual, generation: int, index: int):
             """评估个体的适应度（在测试集上的得分）"""
-            role = individual["role"]
-            style = individual["style"]
-            technique = individual["technique"]
+            def _normalize_space(value: str) -> str:
+                return re.sub(r"\s+", " ", str(value)).strip()
+
+            role = _normalize_space(individual["role"])
+            style = _normalize_space(individual["style"])
+            technique = _normalize_space(individual["technique"])
+            individual["role"] = role
+            individual["style"] = style
+            individual["technique"] = technique
 
             label_candidates = []
             if task_type == "classification":
@@ -144,6 +151,32 @@ class GeneticAlgorithm:
 
 输入：{{{{text}}}}
 输出（只输出标签）："""
+            elif task_type == "translation":
+                # 翻译任务：强制只输出译文，避免解释/标题干扰 BLEU
+                prompt_template = f"""你是一位{role}。
+
+请以{style}的风格完成以下任务：
+{task_description}
+
+策略提示：{technique}
+
+**重要：你必须只输出翻译后的文本，不要输出解释、分析、步骤、标题或任何多余内容。**
+
+输入：{{{{text}}}}
+输出（只输出译文）："""
+            elif task_type == "summarization":
+                # 摘要任务：强制只输出摘要正文，减少格式噪音
+                prompt_template = f"""你是一位{role}。
+
+请以{style}的风格完成以下任务：
+{task_description}
+
+策略提示：{technique}
+
+**重要：你必须只输出摘要正文，不要输出解释、分析、步骤、标题或任何多余内容。**
+
+输入：{{{{text}}}}
+输出（只输出摘要）："""
             else:
                 # 其他任务：常规格式
                 prompt_template = f"""你是一位{role}。
@@ -162,7 +195,10 @@ class GeneticAlgorithm:
             predictions = []
             ground_truths = []
             
-            print(f"  第 {generation} 代个体 {index}: {role} + {style} + {technique}")
+            print(f"  第 {generation} 代个体 {index}:")
+            print(f"    🎭 角色: {role}")
+            print(f"    🎨 风格: {style}")
+            print(f"    🧠 技巧: {technique}")
             
             for idx, sample in enumerate(test_dataset, 1):
                 test_input = sample.get("input", "")

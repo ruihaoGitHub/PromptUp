@@ -94,11 +94,54 @@ class RandomSearchAlgorithm:
                     # 替换占位符
                     prompt_filled = self._fill_prompt(candidate_prompt, case['input'], task_type)
                     
-                    # 调用 LLM
+                    # 调用 LLM（带重试 + 限流/网络退避）
                     print("    🤖 调用 LLM...")
-                    response = self.llm.invoke(prompt_filled)
-                    time.sleep(0.3)  # API 调用延迟
-                    prediction = response.content.strip()
+                    prediction = ""
+                    max_retries = 5
+                    retry_delay = 2.0
+
+                    for retry in range(max_retries):
+                        try:
+                            response = self.llm.invoke(prompt_filled)
+                            prediction = response.content.strip()
+                            # 非 mock 时增加延迟，降低触发限流概率
+                            if not getattr(self.llm, "is_mock", False):
+                                time.sleep(1.0)
+                            break
+                        except Exception as e:
+                            error_msg = str(e)
+                            is_rate_limit = "429" in error_msg or "Too Many Requests" in error_msg
+                            is_network_issue = any(
+                                key in error_msg
+                                for key in [
+                                    "HTTPSConnectionPool",
+                                    "ConnectionError",
+                                    "Read timed out",
+                                    "ConnectTimeout",
+                                    "Max retries exceeded",
+                                ]
+                            )
+
+                            if is_rate_limit or is_network_issue:
+                                if retry < max_retries - 1:
+                                    wait_time = retry_delay * (2 ** retry)
+                                    if is_rate_limit:
+                                        print(f"    ⚠️ 请求过快，等待 {wait_time:.0f}s 后重试（第{retry+1}次）...")
+                                    else:
+                                        print(f"    ⚠️ 网络异常，等待 {wait_time:.0f}s 后重试（第{retry+1}次）...")
+                                    if not getattr(self.llm, "is_mock", False):
+                                        time.sleep(wait_time)
+                                    continue
+                                else:
+                                    print("    ❌ 达到最大重试次数，跳过该样本")
+                                    prediction = ""
+                                    break
+                            else:
+                                print("    ❌ 调用失败（非限流/网络类错误），跳过该样本")
+                                print(f"    错误类型: {type(e).__name__}")
+                                print(f"    错误信息: {error_msg}")
+                                prediction = ""
+                                break
                     print(f"    💬 LLM 输出: {prediction[:80]}..." if len(prediction) > 80 else f"    💬 LLM 输出: {prediction}")
                     
                     # 计算分数

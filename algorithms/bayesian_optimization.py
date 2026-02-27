@@ -115,6 +115,30 @@ class BayesianOptimization:
 
 输入：{{{{text}}}}
 输出（只输出标签）："""
+            elif task_type == "translation":
+                prompt_template = f"""你是一位{role}。
+
+请以{style}的风格完成以下任务：
+{task_description}
+
+策略提示：{technique}
+
+**重要：你必须只输出翻译后的文本，不要输出解释、分析、步骤、标题或任何多余内容。**
+
+输入：{{{{text}}}}
+输出（只输出译文）："""
+            elif task_type == "summarization":
+                prompt_template = f"""你是一位{role}。
+
+请以{style}的风格完成以下任务：
+{task_description}
+
+策略提示：{technique}
+
+**重要：你必须只输出摘要正文，不要输出解释、分析、步骤、标题或任何多余内容。**
+
+输入：{{{{text}}}}
+输出（只输出摘要）："""
             else:
                 prompt_template = f"""你是一位{role}。
 

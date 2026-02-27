@@ -113,8 +113,8 @@ SUMMARIZATION_DEFAULT_DATASET = [
 # 翻译任务默认测试数据集
 TRANSLATION_DEFAULT_DATASET = [
     {
-        "input": """Notwithstanding any provision to the contrary, neither party shall be liable for any delay in performance or failure to perform this Agreement where such delay or failure is due to a Force Majeure event; provided that the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses.""",
-        "ground_truth": "尽管有任何相反约定，若因不可抗力事件导致履行延迟或未能履行本协议，任何一方均不承担责任；但受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。"
+        "input": """If a Force Majeure event prevents or delays performance, the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses.""",
+        "ground_truth": "如因不可抗力事件导致履行受阻或延迟，受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。"
     },
     {
         "input": """Any dispute arising out of or in connection with this Agreement shall be submitted to arbitration in Shanghai, and the arbitral award shall be final and binding upon both parties.""",
@@ -170,8 +170,8 @@ SUMMARIZATION_LAB_DEFAULT_DATASET = [
 # 翻译任务效果实验室默认测试样本
 TRANSLATION_LAB_DEFAULT_DATASET = [
     {
-        "text": "Notwithstanding any provision to the contrary, neither party shall be liable for any delay in performance or failure to perform this Agreement where such delay or failure is due to a Force Majeure event; provided that the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses.",
-        "expected": "尽管有任何相反约定，若因不可抗力事件导致履行延迟或未能履行本协议，任何一方均不承担责任；但受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。",
+        "text": "If a Force Majeure event prevents or delays performance, the affected party shall notify the other party in writing within five (5) business days and use reasonable efforts to mitigate losses.",
+        "expected": "如因不可抗力事件导致履行受阻或延迟，受影响方应在五（5）个工作日内以书面形式通知对方，并尽合理努力减轻损失。",
         "source_lang": "英文",
         "target_lang": "中文"
     },
