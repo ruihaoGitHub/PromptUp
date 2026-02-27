@@ -34,4 +34,3 @@ Thumbs.db
 *.log
 tests/security_check_*.txt
 tests/streamlit_log_*.txt
-algorithm_comparison.png
