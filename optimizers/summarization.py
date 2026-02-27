@@ -46,6 +46,12 @@ class SummarizationOptimizer(OptimizerBase):
         system_prompt = get_summarization_meta_prompt(
             task_description, source_type, target_audience, focus_points, length_constraint
         )
+
+        system_prompt += """
+重要要求：
+- 摘要必须比原文短，只保留核心信息，不要扩写。
+- 不要把原文所有信息都列出来，禁止摘要比原文更长。
+"""
         
         try:
             # 调用 LLM
