@@ -9,6 +9,7 @@ ui/
 ├── __init__.py          # 模块导出
 ├── styles.py            # CSS 样式和页面配置
 ├── sidebar.py           # 侧边栏配置面板
+├── contribution_analysis.py  # 关键词贡献度分析（UI 渲染组件）
 └── README.md            # 本文档
 ```
 

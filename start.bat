@@ -6,27 +6,48 @@ echo ========================================
 echo.
 
 REM 尝试激活 conda 环境（避免调用到 base 环境的 streamlit/python）
-where conda >nul 2>&1
-if %errorlevel%==0 (
+set "CONDA_BAT="
+for /f "delims=" %%i in ('where conda.bat 2^>nul') do set "CONDA_BAT=%%i" & goto :conda_bat_found
+:conda_bat_found
+
+if defined CONDA_BAT (
     if /I not "%CONDA_DEFAULT_ENV%"=="promptup" (
-        call conda activate promptup
+        call "%CONDA_BAT%" activate promptup >nul 2>&1
+        if errorlevel 1 (
+            echo [提示] 已检测到 conda，但未能自动激活 promptup。
+            echo        建议使用 Anaconda Prompt 打开本目录后运行 start.bat。
+            echo.
+        )
     )
 ) else (
-    echo [提示] 未检测到 conda 命令。建议在 Anaconda Prompt/已激活 promptup 环境中运行。
-    echo.
+    where conda >nul 2>&1
+    if %errorlevel%==0 (
+        echo [提示] 检测到 conda，但当前终端可能未初始化 conda activate。
+        echo        建议使用 Anaconda Prompt/已激活 promptup 环境中运行。
+        echo.
+    ) else (
+        echo [提示] 未检测到 conda 命令。建议先安装 Miniconda/Anaconda，或确保已激活虚拟环境。
+        echo.
+    )
 )
 
 REM 检查 .env 文件
 if not exist .env (
-    echo [警告] 未找到 .env 文件
-    echo 正在从 .env.example 创建...
-    copy .env.example .env > nul
+    echo [提示] 未找到 .env 文件
+    if exist .env.example (
+        echo 正在从 .env.example 创建 .env（可选配置）...
+        copy .env.example .env > nul
+        echo ✓ 已创建 .env 文件
+    ) else (
+        echo [警告] 未找到 .env.example，将创建一个空的 .env
+        echo NVIDIA_API_KEY=>> .env
+        echo OPENAI_API_KEY=>> .env
+        echo ✓ 已创建空的 .env 文件
+    )
     echo.
-    echo ✓ 已创建 .env 文件
-    echo 请编辑 .env 文件，填入你的 NVIDIA_API_KEY
+    echo [说明] 未配置 API Key 也可以启动 UI，但无法运行需要调用大模型的功能。
+    echo        你可以在左侧边栏临时粘贴 API Key 后再运行优化/评估。
     echo.
-    pause
-    exit /b
 )
 
 REM 检查是否在虚拟环境中

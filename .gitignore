@@ -1,104 +1,37 @@
-# Environment Variables (包含 API Keys)
+# --- Secrets / env ---
 .env
-.env.local
-.env.*.local
+.env.*
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Packaging
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Testing
+# --- Tests / coverage ---
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
 
-# Logs
-*.log
-logs/
-streamlit_log_*.txt
-ui_test_report_*.txt
+# --- IDE ---
+.vscode/
+.idea/
 
-# OS
+# --- OS ---
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/secrets.toml
-
-# Backup files
-*_old.py
-*_backup.py
-*.bak
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.streamlit/secrets.toml# StreamlitThumbs.db.DS_Store# OS*~*.swo*.swp.idea/.vscode/# IDE.env.local.env# Environment*.egg.installed.cfg*.egg-info/wheels/var/sdist/parts/lib64/lib/.eggs/eggs/downloads/dist/develop-eggs/build/ENV/venv/env/.Python*.so*$py.class*.py[cod]__pycache__/# 请勿提交到版本控制系统
-
-OPENAI_API_KEY=
-OPENAI_BASE_URL=
+# --- Logs / generated artifacts ---
+*.log
+tests/security_check_*.txt
+tests/streamlit_log_*.txt
+algorithm_comparison.png

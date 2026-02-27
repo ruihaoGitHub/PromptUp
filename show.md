@@ -27,12 +27,12 @@ PromptUp 是一个 LLM-as-an-Optimizer 的 Prompt 自动优化系统：
 - 必须保留：requirements.txt、.env.example、start.bat、文档与 tests。
 
 3) PromptUp_演示视频.mp4（6–10 分钟最佳）
-- 录屏：UI 演示 +（可选）终端跑一次 E2E/算法对比脚本。
+- 录屏：UI 演示 +（可选）终端跑一次“可信证据脚本”（连通性/算法对比/静态检查）。
 - 视频里不要暴露 API Key（侧边栏输入框本身是 password，但也建议遮挡/打码）。
 
 4) PromptUp_实验结果与截图.zip
 - UI 截图：最优 Prompt、得分曲线、搜索空间、指标结果、关键词贡献度表。
-- 终端日志：python tests/test_e2e.py 运行输出（或直接附 E2E_TEST_RESULTS.md）。
+- 终端日志：python tests/test_nvidia.py 运行输出（用于证明 API 连通与核心优化链路可跑）。
 -（强烈加分）算法对比图：运行 python tests/compare_algorithms.py 生成 algorithm_comparison.png。
 
 5)（可选）PromptUp_3分钟讲解短视频.mp4
@@ -85,7 +85,7 @@ PromptUp 是一个 LLM-as-an-Optimizer 的 Prompt 自动优化系统：
 ### 3.3 演示前“热身跑”
 强烈建议在录屏/答辩前先跑一次，避免首次加载慢：
 1. 启动 UI，随便跑一次“生成任务优化”（让 API/网络/模型通了）
-2. 打开一次“关键词贡献度分析”（首次会加载 text2vec 模型，可能较慢）
+2. （可选）打开一次“关键词贡献度分析”（首次使用会按需下载/加载 text2vec 模型，可能较慢；不使用则不会触发）
 
 ---
 
@@ -121,7 +121,7 @@ PromptUp 是一个 LLM-as-an-Optimizer 的 Prompt 自动优化系统：
 	 - 最佳组合（role + style + technique）与最佳 Prompt
 
 4:30–5:00 收尾（强调可扩展与可信）
-- 同一套框架也支持摘要/翻译（ROUGE/BLEU），并且有 E2E 测试报告（100% 通过）。
+- 同一套框架也支持摘要/翻译（ROUGE/BLEU），并提供可复现证据：静态编译检查 + API 连通脚本 + 算法对比图。
 
 ---
 
@@ -294,7 +294,7 @@ Key Takeaway：UI、优化引擎、算法、指标、模型调用解耦，便于
 - UI 层：Streamlit（app.py + page_modules/ + ui/）
 - 业务层：PromptOptimizer（optimizer.py）
 - 算法层：random_search / bayesian_optimization / genetic_algorithm（algorithms/）
-- 指标层：Accuracy/ROUGE/BLEU（metrics.py）
+- 指标层：Accuracy/ROUGE/BLEU（metrics/）
 - 服务层：LLMService + ResponseParser（services/）
 - 配置与数据模型：Pydantic Models + meta_prompts（config/）
 - 外部：NVIDIA / OpenAI
@@ -499,20 +499,20 @@ Speaker Notes：
 
 页标题：可信证据：测试通过 + 实验结果 + 可扩展
 
-Key Takeaway：E2E 通过证明系统可用；模块化架构便于扩展新任务/新模型/新指标。
+Key Takeaway：用可复现证据证明系统可用；模块化架构便于扩展新任务/新模型/新指标。
 
 版式：
 - 左 55%：测试与证据（列表 + 截图占位）
 - 右 45%：结论与下一步（列表）
 
 左侧证据列表（建议 4 条）：
-- 端到端测试：3/3 通过（引用 E2E_TEST_RESULTS.md）
-- 模型与 Provider：NVIDIA / OpenAI 可切换
-- 算法对比图：algorithm_comparison.png
-- 评估指标：Accuracy / ROUGE / BLEU
+- UI/页面检查：启动 Streamlit 逐页点击验收（不依赖 API Key）
+- 快速静态检查：python -m compileall .（不依赖 API Key）
+- API 连通性：python tests/test_nvidia.py（真实 API 连通 + 一次优化链路）
+- 算法对比图：algorithm_comparison.png（python tests/compare_algorithms.py 生成）
+- 评估指标：Accuracy / ROUGE / BLEU（UI 验证实验室截图）
 
 左侧截图占位：
-- E2E_TEST_RESULTS.md“3/3 通过”截图（e2e_pass.png）
 - algorithm_comparison.png（algo_compare.png）
 
 右侧“下一步”（3 条，务实不画饼）：
@@ -533,7 +533,7 @@ Speaker Notes：
 	1) 30 秒介绍
 	2) 分类任务闭环（生成→评估→遗传优化→曲线→最优 Prompt）
 	3) 快速切换摘要/翻译各 1 次（展示 ROUGE/BLEU）
-	4) 结尾展示 E2E 报告/算法对比图
+	4) 结尾展示“可信证据”（算法对比图/终端自检输出）
 
 小技巧：
 - 浏览器缩放到 110%（字更清晰）
@@ -552,8 +552,7 @@ Speaker Notes：
 5) 摘要验证实验室：ROUGE 分数
 6) 翻译验证实验室：BLEU 分数
 7) 关键词贡献度分析表（含“下载 CSV”按钮）
-8) E2E_TEST_RESULTS.md 的“3/3 通过”
-9) algorithm_comparison.png（如果跑了算法对比脚本）
+8) algorithm_comparison.png（如果跑了算法对比脚本）
 
 ---
 
@@ -579,10 +578,11 @@ Speaker Notes：
 ## 10.（可选）快速跑一次“可信证据”的命令清单
 
 - 启动 UI：start.bat 或 streamlit run app.py
-- 快速测试（不需要真实 API 的部分）：python tests/run_tests.py
-- 真实 API 端到端测试（需要配置 API Key）：python tests/test_e2e.py
+- 快速静态检查（不需要真实 API）：python -m compileall .
+- 真实 API 连通与核心链路（需要配置 API Key）：python tests/test_nvidia.py
 - 生成算法对比图（需要 API Key，建议录屏前跑好）：python tests/compare_algorithms.py
 	- 输出：algorithm_comparison.png
+- 安全检查（不需要真实 API）：python tests/check_api_security.py
 
 ---
 

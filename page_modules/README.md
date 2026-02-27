@@ -1,17 +1,18 @@
-# Pages 模块
+# page_modules 页面模块
 
-## 模块说明
+本模块用于将 Streamlit 的页面逻辑模块化：每个任务（生成/分类/摘要/翻译）各自维护 UI、验证实验室、以及搜索算法实验区。
 
-此模块用于将 Streamlit UI 组件模块化，将大型 app.py 拆分为独立的页面模块。
-
-## 当前结构
+## 📁 当前结构（以仓库实际为准）
 
 ```
-pages/
-├── __init__.py          # 模块导出
-├── base_page.py         # 页面基类
-├── page_manager.py      # 页面管理器
-└── README.md            # 本文件
+page_modules/
+├── __init__.py
+├── base_page.py
+├── generation_page.py
+├── classification_page.py
+├── summarization_page.py
+├── translation_page.py
+└── page_manager.py
 ```
 
 ## 页面基类 (BasePage)
@@ -29,66 +30,15 @@ pages/
 
 ## 页面管理器 (PageManager)
 
-负责页面注册和路由：
-
-```python
-from pages import page_manager
-
-# 注册页面
-page_manager.register_page("生成任务", GenerationPage)
-page_manager.register_page("分类任务", ClassificationPage)
-
-# 渲染页面
-page_manager.render_page("生成任务", optimizer)
-```
-
-## 后续重构计划
-
-### 待创建的页面模块
-
-1. **generation_page.py** - 通用 Prompt 生成页面
-   - 功能：用户输入原始 Prompt，系统优化输出
-   - 预计：~300 行
-
-2. **classification_page.py** - 分类任务优化页面
-   - 功能：输入任务描述和标签，生成分类 Prompt
-   - 预计：~250 行
-
-3. **summarization_page.py** - 摘要任务优化页面
-   - 功能：输入文本类型和摘要要求，生成摘要 Prompt
-   - 预计：~250 行
-
-4. **translation_page.py** - 翻译任务优化页面
-   - 功能：输入语言对和领域，生成翻译 Prompt
-   - 预计：~250 行
-
-5. **lab_page.py** - 实验室页面
-   - 功能：搜索算法实验（随机搜索、遗传算法、贝叶斯优化）
-   - 预计：~400 行
-
-### 预期收益
-
-- **app.py**: 从 2162 行减少到 ~300 行（-86%）
-- **新增代码**: ~1450 行（分散在 5 个页面文件）
-- **净减少**: ~400 行
-- **可维护性**: 大幅提升，每个页面独立开发和测试
+`page_manager.py` 提供了一个通用的“注册/路由”实现，但当前主入口 [app.py](../app.py) 采用更直接的方式：根据侧边栏选择的任务类型，实例化对应 Page 类并调用 `render()`。
 
 ## 使用示例
 
 ```python
-# 在 app.py 中
-from pages import page_manager
-from pages.generation_page import GenerationPage
-from pages.classification_page import ClassificationPage
+from page_modules import GenerationPage
 
-# 注册所有页面
-page_manager.register_page("生成任务", GenerationPage)
-page_manager.register_page("分类任务", ClassificationPage)
-# ... 注册其他页面
-
-# 根据任务类型渲染对应页面
-task_type = st.radio("任务类型", ["生成任务", "分类任务", ...])
-page_manager.render_page(task_type, optimizer)
+page = GenerationPage(optimizer)
+page.render()
 ```
 
 ## 设计原则

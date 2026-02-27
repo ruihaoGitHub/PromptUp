@@ -45,7 +45,7 @@ PromptUp/
 │   ├── sidebar.py          # 侧边栏组件
 │   └── README.md           # UI 模块文档
 │
-├── 📁 pages/               # Streamlit 页面
+├── 📁 page_modules/         # Streamlit 页面模块
 │   ├── base_page.py        # 基础页面类
 │   ├── generation_page.py  # 通用优化页面
 │   ├── classification_page.py # 分类任务页面
@@ -55,24 +55,17 @@ PromptUp/
 │   └── README.md           # 页面模块文档
 │
 ├── 📁 tests/               # 测试文件
-│   ├── run_tests.py        # 自动化测试运行器
-│   ├── test_e2e.py         # 端到端测试
-│   ├── test_optimize.py    # 优化器测试
-│   ├── test_genetic_algorithm.py
-│   ├── test_bayesian_optimization.py
-│   ├── test_random_search.py
-│   ├── test_random_search_hard.py
-│   ├── test_nvidia.py      # NVIDIA API 测试
-│   ├── test_llm_response.py
-│   ├── compare_algorithms.py # 算法对比
-│   └── README.md           # 测试模块文档
+│   ├── check_api_security.py  # 安全扫描（不需要 API Key）
+│   ├── compare_algorithms.py  # 算法对比（需要 API Key）
+│   ├── test_nvidia.py         # NVIDIA API 连通与最小链路（需要 API Key）
+│   └── README.md              # 测试脚本说明
 │
 ├── 📄 核心文件
 │   ├── app.py              # Streamlit 主应用入口
 │   ├── optimizer.py        # 核心优化器（统一接口）
 │   ├── templates.py        # 优化策略模板
-│   ├── metrics.py          # 评估指标函数
-│   └── nvidia_models.py    # NVIDIA 模型列表
+│   ├── metrics/            # 评估指标函数（包）
+│   └── config/nvidia_models.py # NVIDIA 模型列表
 │
 ├── 📄 配置文件
 │   ├── requirements.txt    # Python 依赖
@@ -81,14 +74,10 @@ PromptUp/
 │   └── start.bat           # Windows 启动脚本
 │
 └── 📄 文档文件
-    ├── README.md           # 项目主文档
-    ├── Architecture.md     # 架构设计文档
-    ├── REFACTORING_LOG.md # 重构日志
-    ├── TEST_PLAN.md        # 测试计划
-    ├── E2E_TEST_RESULTS.md # 端到端测试报告
-    ├── 遗传算法使用指南.md
-    ├── 遗传算法实现总结.md
-    └── 贝叶斯优化说明.md
+     ├── README.md           # 项目主文档
+     ├── PROJECT_STRUCTURE.md # 项目结构详解
+     ├── show.md             # 展示/答辩/材料提交脚本
+     └── show2.md            # 打包与录屏 SOP
 ```
 
 ## 📚 模块详细说明
@@ -165,7 +154,7 @@ PromptUp/
 
 ---
 
-### 7️⃣ pages/ - Streamlit 页面
+### 7️⃣ page_modules/ - Streamlit 页面模块
 **作用**: 多页面应用的页面实现
 
 **主要文件**:
@@ -176,7 +165,7 @@ PromptUp/
 - `translation_page.py`: 翻译任务页面
 - `page_manager.py`: 页面路由管理
 
-**详细文档**: [pages/README.md](pages/README.md)
+**详细文档**: [page_modules/README.md](page_modules/README.md)
 
 ---
 
@@ -184,10 +173,9 @@ PromptUp/
 **作用**: 包含所有测试文件
 
 **主要文件**:
-- `run_tests.py`: 自动化测试运行器（Level 1-3）
-- `test_e2e.py`: 端到端测试（使用真实 API）
-- `test_*.py`: 各模块的单元测试
-- `compare_algorithms.py`: 算法性能对比
+- `test_nvidia.py`: API 连通与最小链路（需要真实 API）
+- `compare_algorithms.py`: 算法性能对比（需要真实 API）
+- `check_api_security.py`: 安全扫描（不需要真实 API）
 
 **详细文档**: [tests/README.md](tests/README.md)
 
@@ -226,14 +214,14 @@ PromptUp/
 - 存储优化原则字典
 - 提供场景到策略的映射
 
-### metrics.py
+### metrics/
 **评估指标函数**
 
 - 定义 Prompt 评估指标
 - 提供评估函数接口
 - 用于搜索算法的目标函数
 
-### nvidia_models.py
+### config/nvidia_models.py
 **NVIDIA 模型列表**
 
 - 列出所有可用的 NVIDIA 模型
@@ -247,11 +235,11 @@ PromptUp/
 ┌─────────────────────────────────────────────┐
 │              app.py (入口)                   │
 │                                             │
-│  ┌─────────┐  ┌──────────┐  ┌───────────┐  │
-│  │ ui/     │  │ pages/   │  │ optimizer │  │
-│  │ styles  │  │ 页面模块  │  │  .py     │  │
-│  │ sidebar │  │          │  │           │  │
-│  └─────────┘  └──────────┘  └───────────┘  │
+│  ┌─────────────┐  ┌────────────────┐  ┌─────────────┐ │
+│  │ ui/         │  │ page_modules/   │  │ optimizer.py │ │
+│  │ styles.py   │  │ 页面模块         │  │             │ │
+│  │ sidebar.py  │  │                │  │             │ │
+│  └─────────────┘  └────────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────┘
                      ↓
         ┌────────────────────────────┐
@@ -274,8 +262,8 @@ PromptUp/
 ```
 
 **依赖说明**:
-- **app.py** → ui, pages, optimizer
-- **pages** → optimizer, ui
+- **app.py** → ui, page_modules, optimizer
+- **page_modules** → optimizer, ui
 - **optimizer** → optimizers, algorithms, services
 - **optimizers** → services, config, utils
 - **algorithms** → services, config
@@ -289,7 +277,7 @@ PromptUp/
 → 查看主 [README.md](README.md)
 
 ### 想了解架构设计？
-→ 查看 [Architecture.md](Architecture.md)
+→ 查看各模块 README（尤其是 algorithms/config/services/optimizers/ui/page_modules）
 
 ### 想运行测试？
 → 查看 [tests/README.md](tests/README.md)
@@ -299,7 +287,7 @@ PromptUp/
 - 添加新算法 → [algorithms/README.md](algorithms/README.md)
 - 添加新任务类型 → [optimizers/README.md](optimizers/README.md)
 - 修改 UI → [ui/README.md](ui/README.md)
-- 添加新页面 → [pages/README.md](pages/README.md)
+- 添加新页面 → [page_modules/README.md](page_modules/README.md)
 
 ---
 
@@ -313,7 +301,7 @@ PromptUp/
 | services | 2 | ~300 | 服务层 |
 | utils | 3 | ~500 | 工具函数 |
 | ui | 2 | ~400 | UI 组件 |
-| pages | 6 | ~800 | 页面实现 |
+| page_modules | 6 | ~800 | 页面实现 |
 | 核心文件 | 5 | ~600 | 主逻辑 |
 | **总计** | **28+** | **~4400** | - |
 
@@ -337,10 +325,3 @@ PromptUp/
 - 所有测试放在 `tests/` 目录
 
 ---
-
-## 📮 相关资源
-
-- **项目仓库**: [GitHub 链接]
-- **问题反馈**: [Issues 链接]
-- **文档站点**: [文档链接]
-- **API 文档**: [API 文档链接]

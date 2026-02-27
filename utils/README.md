@@ -12,6 +12,12 @@
 
 ## 📄 文件说明
 
+### `keyword_analyzer.py`
+**关键词贡献度分析工具（后端逻辑）**
+
+用于对优化后的 Prompt 做分词与 Mask，对比句向量相似度下降幅度来估计关键词贡献度，并输出排序后的 DataFrame。
+（注意：首次调用会加载 `text2vec` 模型，可能较慢）
+
 ### `json_parser.py`
 **JSON 解析工具**
 
