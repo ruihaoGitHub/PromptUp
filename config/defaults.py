@@ -15,11 +15,14 @@ CLASSIFICATION_DEFAULTS = {
     }
 }
 
-# 摘要任务默认参数
+# 摘要任务默认参数（只改这一行！）
 SUMMARIZATION_DEFAULTS = {
     "task_description": {
         "placeholder": "例如：对产品发布新闻进行摘要",
-        "default_value": "对新闻/会议纪要进行摘要（保留关键数字与结论）"
+        # 原来：
+        # "default_value": "对新闻/会议纪要进行摘要（保留关键数字与结论）"
+        # 改成：
+        "default_value": "对新闻/会议纪要进行**精简摘要**，只保留核心信息，**长度必须明显短于原文**，不要扩写、不要复述、不要增加细节"
     },
     "source_type": {
         "placeholder": "例如：新闻报道",
